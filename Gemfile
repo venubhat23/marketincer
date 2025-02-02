@@ -22,6 +22,7 @@ gem "solid_cable"
 gem 'brevo-ruby'
 gem 'letter_opener', group: :development  # For testing emails locally
 source "https://rubygems.org"
+gem 'rack-cors'
 
 # Add these gems
 gem "bcrypt"
