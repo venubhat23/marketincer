@@ -1,0 +1,28 @@
+default: &default
+  adapter: postgresql
+  encoding: unicode
+  pool: 5
+  username: pramod
+  password: pramod
+  host: localhost
+
+development:
+  <<: *default
+  database: markettincer_db
+
+test:
+  <<: *default
+  database: markettincer_db
+
+production:
+  <<: *default
+  database: markettincer_db
+  username: pramod
+  password: pramod
+
+production:
+  url: <%= ENV['DATABASE_URL'] %>
+  adapter: postgresql
+  encoding: unicode
+  pool: <%= ENV.fetch("RAILS_MAX_THREADS") { 5 } %>
+
