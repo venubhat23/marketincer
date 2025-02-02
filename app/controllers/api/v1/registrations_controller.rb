@@ -6,7 +6,6 @@ module Api
         user = User.new(user_params)
 
         if user.save
-          debugger
           UserMailer.activation_email(user).deliver_later
           render json: { 
             message: "Please check your email to activate your account"
