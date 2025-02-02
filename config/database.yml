@@ -18,3 +18,7 @@ test:
 production:
   <<: *default
   database: markettincer_db
+
+cable:
+  <<: *default
+  database: markettincer_db
