@@ -2,9 +2,10 @@ default: &default
   adapter: postgresql
   encoding: unicode
   pool: 5
-  username: pramod
-  password: pramod
-  host: localhost
+  username: markettincer_db_user
+  password: oOAnoNuCGbyo9MgbBOthXW5rnoPaviLu
+  host: dpg-cufhhvbtq21c73f652tg-a.oregon-postgres.render.com
+  port: 5432
 
 development:
   <<: *default
@@ -17,12 +18,3 @@ test:
 production:
   <<: *default
   database: markettincer_db
-  username: pramod
-  password: pramod
-
-production:
-  url: <%= ENV['DATABASE_URL'] %>
-  adapter: postgresql
-  encoding: unicode
-  pool: <%= ENV.fetch("RAILS_MAX_THREADS") { 5 } %>
-
