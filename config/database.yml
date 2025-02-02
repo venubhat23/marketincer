@@ -34,3 +34,7 @@ cable:
 queue:
   <<: *default
   database: markettincer_db
+
+cache:
+  <<: *default
+  database: <%= ENV['DB_NAME'] || 
