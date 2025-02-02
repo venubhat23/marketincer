@@ -18,7 +18,19 @@ test:
 production:
   <<: *default
   database: markettincer_db
+  url: <%= ENV['DATABASE_URL'] %>
 
+# Add this section for Action Cable
 cable:
+  adapter: postgresql
+  encoding: unicode
+  pool: 5
+  database: markettincer_db
+  username: markettincer_db_user
+  password: oOAnoNuCGbyo9MgbBOthXW5rnoPaviLu
+  host: dpg-cufhhvbtq21c73f652tg-a.oregon-postgres.render.com
+  port: 5432
+
+queue:
   <<: *default
   database: markettincer_db

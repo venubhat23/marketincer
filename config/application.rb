@@ -28,5 +28,7 @@ module MarketplaceApi
     # Middleware like session, flash, cookies can be added back manually.
     # Skip views, helpers and assets when generating a new resource.
     config.api_only = true
+    config.action_cable.mount_path = nil
+    config.active_job.queue_adapter = nil
   end
 end
