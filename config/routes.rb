@@ -8,6 +8,9 @@ Rails.application.routes.draw do
       # Change this line to handle the activation route
       get 'activate/:token', to: 'registrations#activate', as: 'activate'
       resources :posts, only: [:create]
+
+      match 'signup', to: 'application#options', via: :options
+
     end
   end
 end
