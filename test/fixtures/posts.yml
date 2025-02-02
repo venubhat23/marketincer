@@ -1,0 +1,19 @@
+# Read about fixtures at https://api.rubyonrails.org/classes/ActiveRecord/FixtureSet.html
+
+one:
+  user: one
+  s3_url: MyString
+  status: MyString
+  hashtags: MyString
+  note: MyText
+  comments: MyText
+  brand_name: MyString
+
+two:
+  user: two
+  s3_url: MyString
+  status: MyString
+  hashtags: MyString
+  note: MyText
+  comments: MyText
+  brand_name: MyString

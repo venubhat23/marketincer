@@ -11,7 +11,7 @@ class User < ApplicationRecord
 
   before_create :generate_activation_token
   
-  
+  has_many :posts
 
   def activation_token_expired?
     activation_sent_at < 24.hours.ago
