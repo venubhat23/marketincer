@@ -18,7 +18,6 @@ module Api
       end
 
       def activate
-        debyger
         user = User.find_by(activation_token: params[:token])
 
         if user && !user.activated?
