@@ -1,4 +1,16 @@
 class ApplicationController < ActionController::API
+
+  before_action :handle_options_request
+
+  def handle_options_request
+    if request.request_method_symbol == :options
+      headers["Access-Control-Allow-Origin"] = "*"
+      headers["Access-Control-Allow-Methods"] = "GET, POST, PUT, PATCH, DELETE, OPTIONS"
+      headers["Access-Control-Allow-Headers"] = "Content-Type, Authorization"
+      head :ok
+    end
+  end
+
       def authenticate_request
       	debugger
         header = request.headers["Authorization"]
