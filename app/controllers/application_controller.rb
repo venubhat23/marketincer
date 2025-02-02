@@ -1,8 +1,8 @@
 class ApplicationController < ActionController::API
 
-   def options
-    head :ok
-  end
+	  def options
+	    head :ok
+	  end
 
 
       def authenticate_request
