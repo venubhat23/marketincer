@@ -91,6 +91,7 @@ Rails.application.configure do
   config.action_cable.url = nil
   config.action_cable.allowed_request_origins = nil
   config.active_job.queue_adapter = :async
+  config.cache_store = :null_store
 
 
   # Enable DNS rebinding protection and other `Host` header attacks.
