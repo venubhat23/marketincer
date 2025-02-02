@@ -1,6 +1,6 @@
 # config/routes.rb
 Rails.application.routes.draw do
-  match '*path', to: 'application#options', via: :options
+  #match '*path', to: 'application#options', via: :options
   namespace :api do
     namespace :v1 do
       get "posts/create"
