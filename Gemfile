@@ -19,7 +19,8 @@ gem "tzinfo-data", platforms: %i[ windows jruby ]
 gem "solid_cache"
 gem "solid_queue"
 gem "solid_cable"
-
+gem 'brevo-ruby'
+gem 'letter_opener', group: :development  # For testing emails locally
 source "https://rubygems.org"
 
 # Add these gems

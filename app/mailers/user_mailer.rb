@@ -3,7 +3,7 @@ class UserMailer < ApplicationMailer
   def activation_email(user)
     @user = user
     # Update the activation URL to include the API namespace
-    @activation_url = "#{ENV['FRONTEND_URL']}/api/v1/activate/#{user.activation_token}"
+    @activation_url = "https://marketincer-apis.onrender.com/api/v1/activate/#{user.activation_token}"
     
     mail(
       to: @user.email,

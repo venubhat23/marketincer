@@ -92,6 +92,22 @@ Rails.application.configure do
   config.action_cable.allowed_request_origins = nil
   config.active_job.queue_adapter = :async
   config.cache_store = :null_store
+# config/environments/production.rb
+
+  config.action_mailer.delivery_method = :smtp
+  config.action_mailer.perform_deliveries = true
+  config.action_mailer.raise_delivery_errors = true
+  config.action_mailer.default_url_options = { host: 'your-production-domain.com' }
+  
+  config.action_mailer.smtp_settings = {
+    address: 'smtp.gmail.com',
+    port: 587,
+    domain: 'gmail.com',
+    user_name: "gogetwrk@gmail.com",
+    password: "elvr peyw kfzi ycxp",
+    authentication: 'plain',
+    enable_starttls_auto: true
+  }
 
 
   # Enable DNS rebinding protection and other `Host` header attacks.
