@@ -1,4 +1,4 @@
-class PostPublisher
+class PostPublisherService
   def initialize(post)
     @post = post
     @page = post.social_page
