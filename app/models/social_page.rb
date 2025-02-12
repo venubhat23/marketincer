@@ -4,5 +4,4 @@ class SocialPage < ApplicationRecord
   has_many :posts
   
   validates :name, :social_id, :page_id, :access_token, presence: true
-  validates :social_id, uniqueness: true
 end
