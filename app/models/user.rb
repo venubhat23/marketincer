@@ -1,4 +1,3 @@
-# app/models/user.rb
 class User < ApplicationRecord
   has_secure_password
 
@@ -12,6 +11,7 @@ class User < ApplicationRecord
   before_create :generate_activation_token
   
   has_many :posts
+  has_many :social_accounts  # Add this line to define the relationship
 
   def activation_token_expired?
     activation_sent_at < 24.hours.ago

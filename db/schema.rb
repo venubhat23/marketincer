@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.0].define(version: 2025_02_03_133627) do
+ActiveRecord::Schema[8.0].define(version: 2025_02_12_132110) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "pg_catalog.plpgsql"
 
@@ -24,7 +24,37 @@ ActiveRecord::Schema[8.0].define(version: 2025_02_03_133627) do
     t.string "brand_name"
     t.datetime "created_at", null: false
     t.datetime "updated_at", null: false
+    t.bigint "social_page_id"
+    t.index ["social_page_id"], name: "index_posts_on_social_page_id"
     t.index ["user_id"], name: "index_posts_on_user_id"
+  end
+
+  create_table "social_accounts", force: :cascade do |t|
+    t.bigint "user_id", null: false
+    t.string "provider"
+    t.string "access_token"
+    t.json "user_info"
+    t.boolean "active", default: true
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+    t.index ["user_id"], name: "index_social_accounts_on_user_id"
+  end
+
+  create_table "social_pages", force: :cascade do |t|
+    t.bigint "social_account_id", null: false
+    t.string "name"
+    t.string "username"
+    t.string "page_type"
+    t.string "social_id"
+    t.string "page_id"
+    t.string "picture_url"
+    t.string "access_token"
+    t.boolean "connected", default: false
+    t.json "page_info"
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+    t.index ["social_account_id"], name: "index_social_pages_on_social_account_id"
+    t.index ["social_id"], name: "index_social_pages_on_social_id", unique: true
   end
 
   create_table "users", force: :cascade do |t|
@@ -40,5 +70,8 @@ ActiveRecord::Schema[8.0].define(version: 2025_02_03_133627) do
     t.index ["email"], name: "index_users_on_email", unique: true
   end
 
+  add_foreign_key "posts", "social_pages"
   add_foreign_key "posts", "users"
+  add_foreign_key "social_accounts", "users"
+  add_foreign_key "social_pages", "social_accounts"
 end

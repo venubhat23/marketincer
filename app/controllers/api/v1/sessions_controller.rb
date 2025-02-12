@@ -6,6 +6,7 @@ module Api
         user = User.find_by(email: params[:email])
 
         if user&.authenticate(params[:password])
+          
           if user.activated?
             token = JsonWebToken.encode(user_id: user.id)
             render json: { 
