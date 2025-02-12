@@ -12,7 +12,7 @@ Rails.application.routes.draw do
       # Social media integration routes
       resources :social_accounts, only: [] do
         collection do
-          get :get_pages
+          post :get_pages
         end
       end
       
