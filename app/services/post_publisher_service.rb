@@ -5,8 +5,6 @@ class PostPublisherService
   end
 
   def publish
-    return unless @page.page_type == 'ig_business'
-    
     instagram_account_id = fetch_instagram_account_id
     creation_id = create_media(instagram_account_id)
     publish_media(instagram_account_id, creation_id)
@@ -22,9 +20,8 @@ class PostPublisherService
         access_token: @page.access_token
       }
     )
-    
     data = JSON.parse(response.body)
-    data.dig("instagram_business_account", "id")
+    return data["instagram_business_account"]["id"]
   end
 
   def create_media(instagram_id)
@@ -36,7 +33,6 @@ class PostPublisherService
         caption: generate_caption
       }
     )
-    
     data = JSON.parse(response.body)
     data["id"]
   end
@@ -49,7 +45,6 @@ class PostPublisherService
         creation_id: creation_id
       }
     )
-    
     @post.update(status: 'published')
   end
 
