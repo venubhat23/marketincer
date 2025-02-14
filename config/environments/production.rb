@@ -93,6 +93,7 @@ Rails.application.configure do
   config.active_job.queue_adapter = :async
   config.cache_store = :null_store
 # config/environments/production.rb
+  config.log_level = :debug
 
   config.action_mailer.delivery_method = :smtp
   config.action_mailer.perform_deliveries = true

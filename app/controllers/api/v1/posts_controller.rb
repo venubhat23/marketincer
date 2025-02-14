@@ -32,12 +32,37 @@ module Api
       def create
         post = @current_user.posts.new(post_params)
         post.social_page = @social_page
+
         if post.save
-          
-          PostPublisherService.new(post).publish
-          render json: { status: 'success', message: 'Post published successfully' }
+          begin
+            PostPublisherService.new(post).publish
+            
+            render json: {
+              status: 'success',
+              publish_log: post.publish_log,
+              post: {
+                id: post.id,
+                status: post.status,
+                created_at: post.created_at,
+                brand_name: post.brand_name
+              }
+            }
+          rescue StandardError => e
+            render json: {
+              status: 'error',
+              message: post.publish_log,
+              post: {
+                id: post.id,
+                status: post.status,
+                error: e.message
+              }
+            }, status: :unprocessable_entity
+          end
         else
-          render json: { errors: post.errors.full_messages }, status: :unprocessable_entity
+          render json: { 
+            status: 'error',
+            message: post.errors.full_messages.join(', ')
+          }, status: :unprocessable_entity
         end
       end
 
