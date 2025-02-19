@@ -35,18 +35,30 @@ module Api
 
         if post.save
           begin
-            PostPublisherService.new(post).publish
-            
-            render json: {
-              status: 'success',
-              publish_log: post.publish_log,
-              post: {
-                id: post.id,
-                status: post.status,
-                created_at: post.created_at,
-                brand_name: post.brand_name
+            if post.status != "draft"
+              PostPublisherService.new(post).publish
+              
+              render json: {
+                status: 'success',
+                publish_log: post.publish_log,
+                post: {
+                  id: post.id,
+                  status: post.status,
+                  created_at: post.created_at,
+                  brand_name: post.brand_name
+                }
               }
-            }
+            else              
+              render json: {
+                status: 'success',
+                post: {
+                  id: post.id,
+                  status: post.status,
+                  created_at: post.created_at,
+                  brand_name: post.brand_name
+                }
+              }
+            end
           rescue StandardError => e
             render json: {
               status: 'error',
