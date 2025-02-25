@@ -20,6 +20,7 @@ Rails.application.routes.draw do
         collection do
           post :connect
           get :connected_pages
+          delete :dis_connect # <-- Added disconnect route
         end
       end
       

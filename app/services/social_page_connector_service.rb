@@ -10,6 +10,33 @@ class SocialPageConnectorService
     create_social_page(social_account)
   end
 
+
+  def disconnect
+    debuger
+    ActiveRecord::Base.transaction do
+      social_page = @user.social_accounts
+                         .find_by(id: @page_params[:social_account_id])
+                         &.social_pages
+                         &.find_by(id: @page_params[:id])
+
+      return { success: false, error: "Social Page not found" } unless social_page
+
+      social_account = social_page.social_account
+      social_page.destroy!
+
+      # If the social account has no more connected pages, delete the account
+      if social_account.social_pages.count.zero?
+        social_account.destroy!
+      end
+
+      return { success: true }
+    rescue ActiveRecord::RecordNotFound
+      return { success: false, error: "Invalid social_account_id or id" }
+    rescue => e
+      return { success: false, error: "Failed to disconnect: #{e.message}" }
+    end
+  end
+
   private
 
   def find_or_create_social_account

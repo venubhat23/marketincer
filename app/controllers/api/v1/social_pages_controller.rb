@@ -24,6 +24,28 @@ module Api
         }
       end
 
+      def dis_connect
+        ActiveRecord::Base.transaction do
+          social_page = SocialPage.find_by(id: params[:page][:id])
+          social_account = SocialAccount.find_by(id: params[:page][:social_account_id])
+
+          if social_page.nil? || social_account.nil?
+            return render json: { status: 'error', message: 'Invalid social page or social account ID' }, status: :unprocessable_entity
+          end
+
+          social_account.social_pages.each do |sp|
+            sp.posts.delete_all
+            sp.destroy
+          end
+          social_account.destroy
+
+          render json: { status: 'success', message: 'Successfully disconnected' }
+        end
+      rescue ActiveRecord::RecordInvalid => e
+        render json: { status: 'error', message: e.message }, status: :unprocessable_entity
+      rescue StandardError => e
+        render json: { status: 'error', message: 'Something went wrong, please retry' }, status: :internal_server_error
+      end
       private
 
       def page_params
