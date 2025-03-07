@@ -2,9 +2,9 @@ default: &default
   adapter: postgresql
   encoding: unicode
   pool: 5
-  username: markettincer_db_user
-  password: oOAnoNuCGbyo9MgbBOthXW5rnoPaviLu
-  host: dpg-cufhhvbtq21c73f652tg-a.oregon-postgres.render.com
+  username: markettincer_db_02h3_user
+  password: K3lMReJWk2zLl09Gbl4OIuxbiPREQySc
+  host: dpg-cv5ik8rqf0us73f0pisg-a.oregon-postgres.render.com
   port: 5432
 
 development:
@@ -13,14 +13,14 @@ development:
 
 test:
   <<: *default
-  database: markettincer_db
+  database: markettincer_db_test
 
 production:
   <<: *default
   database: markettincer_db
-  url: <%= ENV['DATABASE_URL'] %>
+  url: postgresql://markettincer_db_02h3_user:K3lMReJWk2zLl09Gbl4OIuxbiPREQySc@dpg-cv5ik8rqf0us73f0pisg-a.oregon-postgres.render.com/markettincer_db
 
-# Add this section for Action Cable
+# Action Cable configuration
 cable:
   adapter: postgresql
   encoding: unicode
@@ -37,4 +37,4 @@ queue:
 
 cache:
   <<: *default
-  database: <%= ENV['DB_NAME'] || 
+  database: markettincer_db
