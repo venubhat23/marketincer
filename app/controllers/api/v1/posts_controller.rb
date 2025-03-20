@@ -7,7 +7,7 @@ module Api
 
       # Create a new post
       def create
-        post = @current_user.posts.new(post_params)
+        post = @current_user.posts.new(post_params.merge(account_id: params[:social_page_id]))
         post.social_page = @social_page
 
         if post.save
@@ -113,7 +113,7 @@ module Api
 
       # Schedule a post
       def schedule
-        post = @current_user.posts.new(post_params)
+        post = @current_user.posts.new(post_params.merge(account_id: params[:social_page_id]))
         post.social_page = @social_page
         post.status = "scheduled"
 
@@ -137,7 +137,7 @@ module Api
       end
 
       def post_params
-        params.require(:post).permit(:s3_url, :hashtags, :note, :comments, :brand_name, :status, :scheduled_at, :account_id)
+        params.require(:post).permit(:s3_url, :hashtags, :note, :comments, :brand_name, :status, :scheduled_at)
       end
 
       def post_response(post)
