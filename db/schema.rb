@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.0].define(version: 2025_03_20_041558) do
+ActiveRecord::Schema[8.0].define(version: 2025_03_20_175528) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "pg_catalog.plpgsql"
 
@@ -27,7 +27,7 @@ ActiveRecord::Schema[8.0].define(version: 2025_03_20_041558) do
     t.bigint "social_page_id"
     t.text "publish_log"
     t.datetime "scheduled_at"
-    t.integer "account_id"
+    t.bigint "account_id"
     t.index ["social_page_id"], name: "index_posts_on_social_page_id"
     t.index ["user_id"], name: "index_posts_on_user_id"
   end
