@@ -3,7 +3,9 @@ module Api
     class PostsController < ApplicationController
       before_action :authenticate_user!
       before_action :set_social_page, only: [:create, :schedule]
+      before_action :set_post, only: [:update, :destroy]  # Ensure @post is available
 
+      # Create a new post
       def create
         post = @current_user.posts.new(post_params)
         post.social_page = @social_page
@@ -47,17 +49,45 @@ module Api
         end
 
         # Filter by account_ids
-        if params[:account_ids].present?
-          posts = posts.where(account_id: params[:account_ids])
+        posts = posts.where(account_id: params[:account_ids]) if params[:account_ids].present?
+
+        # Select only the required fields
+        formatted_posts = posts.select(:id, :s3_url, :hashtags, :note, :comments, :brand_name, :status, :scheduled_at, :created_at).map do |post|
+          {
+            id: post.id,
+            s3_url: post.s3_url,
+            hashtags: post.hashtags,
+            note: post.note,
+            comments: post.comments,
+            brand_name: post.brand_name,
+            status: post.status,
+            scheduled_at: post.scheduled_at,
+            created_at: post.created_at
+          }
         end
 
-        render json: {
-          posts: posts.select(:id, :s3_url, :hashtags, :note, :comments, :brand_name, :status, :scheduled_at, :account_id, :created_at),
-          total: posts.count
-        }
+        render json: { posts: formatted_posts, total: posts.count }
       end
 
+      # Update an existing post
+      def update
+        if @post.update(post_params)
+          render json: { status: "success", post: post_response(@post) }, status: :ok
+        else
+          render json: { status: "error", message: @post.errors.full_messages.join(", ") }, status: :unprocessable_entity
+        end
+      end
 
+      # Delete a post
+      def destroy
+        if @post.destroy
+          render json: { status: "success", message: "Post deleted successfully" }, status: :ok
+        else
+          render json: { status: "error", message: "Failed to delete post" }, status: :unprocessable_entity
+        end
+      end
+
+      # Schedule a post
       def schedule
         post = @current_user.posts.new(post_params)
         post.social_page = @social_page
@@ -74,6 +104,11 @@ module Api
 
       def set_social_page
         @social_page = SocialPage.find_by(social_id: params[:social_page_id])
+      end
+
+      def set_post
+        @post = Post.find_by(id: params[:id])
+        render json: { status: "error", message: "Post not found" }, status: :not_found unless @post
       end
 
       def post_params

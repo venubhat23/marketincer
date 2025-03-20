@@ -22,7 +22,7 @@ Rails.application.routes.draw do
       end
 
       # Posts routes
-      resources :posts, only: [:create] do
+      resources :posts, only: [:create, :update, :destroy] do
         collection do
           post :schedule  # New endpoint for scheduling posts
           get :search     # New endpoint for searching/filtering posts
