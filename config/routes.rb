@@ -1,31 +1,33 @@
-# config/routes.rb
 Rails.application.routes.draw do
-  #match '*path', to: 'application#options', via: :options
   namespace :api do
     namespace :v1 do
-      # Existing authentication routes
-      get "posts/create"
+      # Authentication routes
       post 'signup', to: 'registrations#create'
       post 'login', to: 'sessions#create'
       get 'activate/:token', to: 'registrations#activate', as: 'activate'
-      
+
       # Social media integration routes
       resources :social_accounts, only: [] do
         collection do
           post :get_pages
         end
       end
-      
+
       resources :social_pages, only: [] do
         collection do
           post :connect
           get :connected_pages
-          delete :dis_connect # <-- Added disconnect route
+          delete :dis_connect
         end
       end
-      
-      # Combined posts routes
-      resources :posts, only: [:create]
+
+      # Posts routes
+      resources :posts, only: [:create] do
+        collection do
+          post :schedule  # New endpoint for scheduling posts
+          get :search     # New endpoint for searching/filtering posts
+        end
+      end
     end
   end
 end
