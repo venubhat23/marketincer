@@ -28,37 +28,52 @@ module Api
         end
       end
 
-    def search
-      posts = Post.all
+      def search
+        posts = Post.all # Assuming Post belongs_to :page_data
 
-      # Filter by postType (status)
-      posts = posts.where(status: params[:postType].strip) if params[:postType].present?
+        # Filter by postType (status)
+        posts = posts.where(status: params[:postType].strip) if params[:postType].present?
 
-      # Filter by state (draft, scheduled, failed)
-      posts = posts.where(state: params[:state].strip) if params[:state].present?
+        # Filter by state (draft, scheduled, failed)
+        posts = posts.where(state: params[:state].strip) if params[:state].present?
 
-      # Search query (filter by note, comments, brand_name)
-      if params[:query].present?
-        query = "%#{params[:query].strip}%"
-        posts = posts.where("note ILIKE :q OR comments ILIKE :q OR brand_name ILIKE :q", q: query)
+        # Search query (filter by note, comments, brand_name)
+        if params[:query].present?
+          query = "%#{params[:query].strip}%"
+          posts = posts.where("note ILIKE :q OR comments ILIKE :q OR brand_name ILIKE :q", q: query)
+        end
+
+        # Filter by date range
+        if params[:from].present? && params[:to].present?
+          from_date = DateTime.parse(params[:from]) rescue nil
+          to_date = DateTime.parse(params[:to]) rescue nil
+          posts = posts.where(created_at: from_date..to_date) if from_date && to_date
+        end
+
+        # Filter by account_ids (ensure it's an array)
+        posts = posts.where(account_id: params[:account_ids]) if params[:account_ids].present?
+
+        # Format response as required
+        formatted_posts = posts.map do |post|
+          {
+            start: post.created_at,
+            end: post.created_at + 1.hour, # Assuming 1 hour duration, update as needed
+            brand_name: post.brand_name,
+            comments: post.comments,
+            hashtags: post.hashtags,
+            note: post.note,
+            s3_url: post.s3_url,
+            status: post.status,
+            hashtags: post.hashtags,
+            note: post.note,
+            created_at: post.created_at,
+            account_id: post.account_id,
+            scheduled_at: post.scheduled_at
+          }
+        end
+
+        render json: { posts: formatted_posts, total: posts.count }
       end
-
-      # Filter by date range
-      if params[:from].present? && params[:to].present?
-        from_date = DateTime.parse(params[:from]) rescue nil
-        to_date = DateTime.parse(params[:to]) rescue nil
-        posts = posts.where(created_at: from_date..to_date) if from_date && to_date
-      end
-
-      # Filter by account_ids (ensure it's an array)
-      posts = posts.where(account_id: params[:account_ids]) if params[:account_ids].present?
-
-      # Convert ActiveRecord results to JSON including all fields dynamically
-      formatted_posts = posts.as_json
-
-      render json: { posts: formatted_posts, total: posts.count }
-    end
-
 
       # Update an existing post
       def update
