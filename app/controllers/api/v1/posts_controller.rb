@@ -55,8 +55,8 @@ module Api
           social_account = social_page&.social_account
 
           post_data = {
-            start: post.created_at,
-            end: post.created_at + 1.hour,  # Assuming 1 hour duration
+            start: post.scheduled_at,
+            end: post.scheduled_at
             brand_name: post.brand_name,
             comments: post.comments,
             hashtags: post.hashtags,
