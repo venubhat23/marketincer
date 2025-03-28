@@ -56,7 +56,7 @@ module Api
 
           post_data = {
             start: post.scheduled_at,
-            end: post.scheduled_at
+            end: post.scheduled_at,
             brand_name: post.brand_name,
             comments: post.comments,
             hashtags: post.hashtags,
