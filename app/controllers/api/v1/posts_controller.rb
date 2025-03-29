@@ -118,6 +118,7 @@ module Api
         post.status = "scheduled"
 
         if post.save
+          PostPublisherWorker.perform_at(post.scheduled_at, post.id)
           render json: { status: "success", message: "Post scheduled successfully", post: post_response(post) }
         else
           render json: { status: "error", message: post.errors.full_messages.join(", ") }, status: :unprocessable_entity

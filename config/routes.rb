@@ -30,4 +30,7 @@ Rails.application.routes.draw do
       end
     end
   end
+
+  # Mount Sidekiq Web UI at `/sidekiq`
+  mount Sidekiq::Web => '/sidekiq'
 end

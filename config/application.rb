@@ -10,6 +10,7 @@ module MarketplaceApi
   class Application < Rails::Application
     # Initialize configuration defaults for originally generated Rails version.
     config.load_defaults 8.0
+    config.active_job.queue_adapter = :sidekiq
 
     # Please, add to the `ignore` list any other `lib` subdirectories that do
     # not contain `.rb` files, or that should not be reloaded or eager loaded.
@@ -27,6 +28,10 @@ module MarketplaceApi
     # Only loads a smaller set of middleware suitable for API only apps.
     # Middleware like session, flash, cookies can be added back manually.
     # Skip views, helpers and assets when generating a new resource.
+    config.middleware.use ActionDispatch::Cookies
+    config.middleware.use ActionDispatch::Session::CookieStore, key: '_your_app_session'
+    config.middleware.use Rack::MethodOverride
+
     config.api_only = true
     config.action_cable.mount_path = nil
     config.active_job.queue_adapter = nil
