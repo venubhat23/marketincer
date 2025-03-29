@@ -44,7 +44,7 @@ module Api
         if params[:from].present? && params[:to].present?
           from_date = DateTime.parse(params[:from]) rescue nil
           to_date = DateTime.parse(params[:to]) rescue nil
-          posts = posts.where(created_at: from_date..to_date) if from_date && to_date
+          posts = posts.where(scheduled_at: from_date..to_date) if from_date && to_date
         end
 
         posts = posts.where(account_id: params[:account_ids]) if params[:account_ids].present?
