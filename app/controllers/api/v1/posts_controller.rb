@@ -44,6 +44,8 @@ module Api
         if params[:from].present? && params[:to].present?
           from_date = DateTime.parse(params[:from]) rescue nil
           to_date = DateTime.parse(params[:to]) rescue nil
+          to_date = to_date.end_of_day if to_date # Ensure full day is included
+
           posts = posts.where(scheduled_at: from_date..to_date) if from_date && to_date
         end
 
