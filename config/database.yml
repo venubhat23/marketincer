@@ -16,9 +16,15 @@ test:
   database: markettincer_db_test
 
 production:
-  <<: *default
-  database: markettincer_db
-  url: postgresql://markettincer_db_02h3_user:K3lMReJWk2zLl09Gbl4OIuxbiPREQySc@dpg-cv5ik8rqf0us73f0pisg-a.oregon-postgres.render.com/markettincer_db
+  adapter: postgresql
+  encoding: unicode
+  pool: 5
+  database: markettincer_db_2txk
+  username: markettincer_db_2txk_user
+  password: fh4n7a2WdLBtfCdbQMQd6lOHqzon7i2v
+  host: dpg-cvpul9q4d50c73bv611g-a
+  port: 5432
+  url: postgresql://markettincer_db_2txk_user:fh4n7a2WdLBtfCdbQMQd6lOHqzon7i2v@dpg-cvpul9q4d50c73bv611g-a/markettincer_db_2txk
 
 # Action Cable configuration
 cable:
