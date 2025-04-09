@@ -19,12 +19,12 @@ production:
   adapter: postgresql
   encoding: unicode
   pool: 5
-  database: markettincer_db_2txk
-  username: markettincer_db_2txk_user
-  password: fh4n7a2WdLBtfCdbQMQd6lOHqzon7i2v
-  host: dpg-cvpul9q4d50c73bv611g-a
+  database: postgres
+  username: postgres_admin
+  password: postgres_admin_password
+  host: marketincer-rds.cxmomsg8m9f6.us-east-2.rds.amazonaws.com
   port: 5432
-  url: postgresql://markettincer_db_2txk_user:fh4n7a2WdLBtfCdbQMQd6lOHqzon7i2v@dpg-cvpul9q4d50c73bv611g-a/markettincer_db_2txk
+  # url: postgresql://markettincer_db_2txk_user:fh4n7a2WdLBtfCdbQMQd6lOHqzon7i2v@dpg-cvpul9q4d50c73bv611g-a/markettincer_db_2txk
 
 # Action Cable configuration
 cable:

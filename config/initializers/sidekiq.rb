@@ -14,16 +14,12 @@ end
 # Upstash Redis Configuration
 Sidekiq.configure_server do |config|
   config.redis = {
-    url: "rediss://fine-dane-48514.upstash.io",
-    password: "Ab2CAAIjcDE5MzQxNWU0OTc0NjU0MTlhYTY4YWI2YWVkZDcxN2JkZHAxMA",
-    ssl_params: { verify_mode: OpenSSL::SSL::VERIFY_NONE }
+    url: "redis://marketincersidekiqcache-oysgtt.serverless.use2.cache.amazonaws.com:6379"
   }
 end
 
 Sidekiq.configure_client do |config|
   config.redis = {
-    url: "rediss://fine-dane-48514.upstash.io",
-    password: "Ab2CAAIjcDE5MzQxNWU0OTc0NjU0MTlhYTY4YWI2YWVkZDcxN2JkZHAxMA",
-    ssl_params: { verify_mode: OpenSSL::SSL::VERIFY_NONE }
+    url: "redis://marketincersidekiqcache-oysgtt.serverless.use2.cache.amazonaws.com:6379"
   }
 end
