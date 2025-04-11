@@ -11,15 +11,17 @@ Sidekiq::Web.use Rack::Auth::Basic do |username, password|
     ActiveSupport::SecurityUtils.secure_compare(password, "password123")
 end
 
+redis_url = "redis://marketincersidekiqcache-oysgtt.serverless.use2.cache.amazonaws.com:6379"
+
 # Upstash Redis Configuration
 Sidekiq.configure_server do |config|
   config.redis = {
-    url: "redis://marketincersidekiqcache-oysgtt.serverless.use2.cache.amazonaws.com:6379"
+    url: redis_url
   }
 end
 
 Sidekiq.configure_client do |config|
   config.redis = {
-    url: "redis://marketincersidekiqcache-oysgtt.serverless.use2.cache.amazonaws.com:6379"
+    url: redis_url
   }
 end
