@@ -49,6 +49,7 @@ class SocialPageConnectorService
   end
 
   def create_social_page(social_account)
+    
     existing_page = social_account.social_pages.find_by(
       social_id: @page_params[:social_id],
       page_id: @page_params[:page_id]
