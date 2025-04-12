@@ -49,6 +49,15 @@ class SocialPageConnectorService
   end
 
   def create_social_page(social_account)
+    existing_page = social_account.social_pages.find_by(
+      social_id: @page_params[:social_id],
+      page_id: @page_params[:page_id]
+    )
+
+    if existing_page.present?
+      Rails.logger.info "SocialPage already exists for social_id: #{@page_params[:social_id]} and page_id: #{@page_params[:page_id]}"
+      return existing_page
+    end
     social_account.social_pages.create!(
       name: @page_params[:name],
       username: @page_params[:username],
@@ -60,5 +69,8 @@ class SocialPageConnectorService
       connected: true,
       page_info: @page_params[:user]
     )
+  rescue ActiveRecord::RecordInvalid => e
+    Rails.logger.error("Failed to create social page: #{e.message}")
+    raise
   end
 end
