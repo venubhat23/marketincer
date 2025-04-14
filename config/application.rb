@@ -34,6 +34,5 @@ module MarketplaceApi
 
     config.api_only = true
     config.action_cable.mount_path = nil
-    config.active_job.queue_adapter = nil
   end
 end
