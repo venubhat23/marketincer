@@ -57,6 +57,7 @@ module Api
           social_account = social_page&.social_account
 
           post_data = {
+            post_id: post.id,
             start: post.scheduled_at,
             end: post.scheduled_at,
             brand_name: post.brand_name,
