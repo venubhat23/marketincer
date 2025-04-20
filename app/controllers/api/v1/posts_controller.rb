@@ -116,6 +116,10 @@ module Api
 
       # Schedule a post
       def schedule
+       if params[:existing_post_id].present?
+          old_post = Post.find_by(id: params[:existing_post_id])
+          old_post.destroy if old_post
+        end
         post = @current_user.posts.new(post_params.merge(account_id: params[:social_page_id]))
         post.social_page = @social_page
         post.status = "scheduled"
