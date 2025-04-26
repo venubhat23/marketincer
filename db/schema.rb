@@ -10,9 +10,27 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.0].define(version: 2025_03_20_175528) do
+ActiveRecord::Schema[8.0].define(version: 2025_04_26_074709) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "pg_catalog.plpgsql"
+
+  create_table "invoices", force: :cascade do |t|
+    t.bigint "user_id", null: false
+    t.string "company_name"
+    t.string "gst_number"
+    t.string "phone_number"
+    t.text "address"
+    t.string "company_website"
+    t.string "job_title"
+    t.string "work_email"
+    t.decimal "gst_percentage"
+    t.jsonb "line_items"
+    t.decimal "total_amount"
+    t.string "status"
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+    t.index ["user_id"], name: "index_invoices_on_user_id"
+  end
 
   create_table "posts", force: :cascade do |t|
     t.bigint "user_id", null: false
@@ -30,6 +48,25 @@ ActiveRecord::Schema[8.0].define(version: 2025_03_20_175528) do
     t.bigint "account_id"
     t.index ["social_page_id"], name: "index_posts_on_social_page_id"
     t.index ["user_id"], name: "index_posts_on_user_id"
+  end
+
+  create_table "purchase_orders", force: :cascade do |t|
+    t.bigint "user_id", null: false
+    t.string "company_name"
+    t.string "gst_number"
+    t.string "phone_number"
+    t.string "address"
+    t.string "company_website"
+    t.string "job_title"
+    t.string "work_email"
+    t.decimal "gst_percentage"
+    t.string "status"
+    t.decimal "total_amount"
+    t.string "order_number"
+    t.jsonb "line_items"
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+    t.index ["user_id"], name: "index_purchase_orders_on_user_id"
   end
 
   create_table "social_accounts", force: :cascade do |t|
@@ -68,12 +105,24 @@ ActiveRecord::Schema[8.0].define(version: 2025_03_20_175528) do
     t.datetime "created_at", null: false
     t.datetime "updated_at", null: false
     t.string "role", default: "brand", null: false
+    t.string "first_name"
+    t.string "last_name"
+    t.string "gst_name"
+    t.string "gst_number"
+    t.string "phone_number"
+    t.text "address"
+    t.string "company_website"
+    t.string "job_title"
+    t.string "work_email"
+    t.decimal "gst_percentage", precision: 5, scale: 2, default: "18.0"
     t.index ["activation_token"], name: "index_users_on_activation_token", unique: true
     t.index ["email"], name: "index_users_on_email", unique: true
   end
 
+  add_foreign_key "invoices", "users"
   add_foreign_key "posts", "social_pages"
   add_foreign_key "posts", "users"
+  add_foreign_key "purchase_orders", "users"
   add_foreign_key "social_accounts", "users"
   add_foreign_key "social_pages", "social_accounts"
 end
