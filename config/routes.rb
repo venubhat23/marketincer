@@ -1,11 +1,15 @@
 Rails.application.routes.draw do
   get "/health", to: "health#show"
+
   namespace :api do
     namespace :v1 do
       # Authentication routes
       post 'signup', to: 'registrations#create'
       post 'login', to: 'sessions#create'
       get 'activate/:token', to: 'registrations#activate', as: 'activate'
+
+      # User profile update route
+      put 'user/update_profile', to: 'users#update_profile'
 
       # Social media integration routes
       resources :social_accounts, only: [] do
@@ -25,10 +29,28 @@ Rails.application.routes.draw do
       # Posts routes
       resources :posts, only: [:create, :update, :destroy] do
         collection do
-          post :schedule  # New endpoint for scheduling posts
-          get :search     # New endpoint for searching/filtering posts
+          post :schedule
+          get :search
         end
       end
+
+      resources :invoices, only: [:create, :update] do
+        member do
+          put :update_status
+        end
+        collection do
+          get :dashboard
+        end
+      end
+
+    resources :purchase_orders, only: [:create, :update, :index] do
+      collection do
+        get 'dashboard'  # Dashboard API
+      end
+    end
+
+
+
     end
   end
 
