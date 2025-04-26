@@ -12,7 +12,8 @@ class User < ApplicationRecord
   
   has_many :posts
   has_many :social_accounts  # Add this line to define the relationship
-
+  has_many :invoices
+  has_many :purchase_orders
   def activation_token_expired?
     activation_sent_at < 24.hours.ago
   end

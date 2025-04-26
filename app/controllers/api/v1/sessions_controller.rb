@@ -11,7 +11,21 @@ module Api
             token = JsonWebToken.encode(user_id: user.id)
             render json: { 
               token: token,
-              user: { id: user.id, email: user.email, role: user.role }
+              user: {
+                role: user.role,
+                id: user.id,
+                first_name: user.first_name,
+                last_name: user.last_name,
+                email: user.email,
+                gst_name: user.gst_name,
+                gst_number: user.gst_number,
+                phone_number: user.phone_number,
+                address: user.address,
+                company_website: user.company_website,
+                job_title: user.job_title,
+                work_email: user.work_email,
+                gst_percentage: user.gst_percentage
+              }
             }
           else
             render json: { 
@@ -27,3 +41,4 @@ module Api
     end
   end
 end
+
