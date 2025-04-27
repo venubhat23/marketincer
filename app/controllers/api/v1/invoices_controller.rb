@@ -7,9 +7,6 @@ module Api
       # POST /api/v1/invoices
       def create
         invoice = @current_user.invoices.build(invoice_params)
-        binding.pry
-
-
         if invoice.save
           render json: { message: 'Invoice created successfully', invoice: invoice }, status: :created
         else
