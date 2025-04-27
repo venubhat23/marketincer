@@ -1,0 +1,35 @@
+# Read about fixtures at https://api.rubyonrails.org/classes/ActiveRecord/FixtureSet.html
+
+one:
+  user: one
+  company_name: MyString
+  gst_number: MyString
+  phone_number: MyString
+  address: MyString
+  company_website: MyString
+  job_title: MyString
+  work_email: MyString
+  gst_percentage: 9.99
+  status: MyString
+  total_amount: 9.99
+  order_number: MyString
+  line_items: 
+  created_at: 2025-04-26 13:17:09
+  updated_at: 2025-04-26 13:17:09
+
+two:
+  user: two
+  company_name: MyString
+  gst_number: MyString
+  phone_number: MyString
+  address: MyString
+  company_website: MyString
+  job_title: MyString
+  work_email: MyString
+  gst_percentage: 9.99
+  status: MyString
+  total_amount: 9.99
+  order_number: MyString
+  line_items: 
+  created_at: 2025-04-26 13:17:09
+  updated_at: 2025-04-26 13:17:09
