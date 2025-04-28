@@ -1,5 +1,6 @@
 class Invoice < ApplicationRecord
   belongs_to :user
+  attribute :line_items, :jsonb, default: -> { [] }
 
   # Store line_items as JSONB
   store :line_items, accessors: [:items], coder: JSON

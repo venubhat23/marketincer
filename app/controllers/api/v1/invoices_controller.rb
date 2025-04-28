@@ -7,7 +7,6 @@ module Api
       # POST /api/v1/invoices
       def create
         invoice = @current_user.invoices.build(invoice_params)
-
         if invoice.save
           render json: { message: 'Invoice created successfully', invoice: invoice }, status: :created
         else
@@ -46,20 +45,22 @@ module Api
         paid_invoices = invoices.where(status: 'Paid')
         pending_invoices = invoices.where(status: 'Pending')
 
-        # Calculate totals for paid, pending, and all invoices
-        total_paid = paid_invoices.sum(:total_amount) # Sum the total_amount for paid invoices
-        total_pending = pending_invoices.sum(:total_amount) # Sum the total_amount for pending invoices
-        total_all = total_paid + total_pending # Total amount from both paid and pending invoices
+        # Calculate totals
+        total_paid = paid_invoices.sum(:total_amount)
+        total_pending = pending_invoices.sum(:total_amount)
+        total_all = total_paid + total_pending
+
+        # Merge paid and pending invoices and sort by created_at DESC
+        all_invoices = (paid_invoices + pending_invoices).sort_by(&:created_at).reverse
 
         # Respond with the statistics
         render json: {
-          paid_invoices_count: paid_invoices.count,  # Count of paid invoices
-          pending_invoices_count: pending_invoices.count,  # Count of pending invoices
-          total_paid: total_paid,  # Total paid amount
-          total_pending: total_pending,  # Total pending amount
-          total_all: total_all,  # Total amount (paid + pending)
-          paid_invoices: paid_invoices,  # List of paid invoices
-          pending_invoices: pending_invoices  # List of pending invoices
+          paid_invoices_count: paid_invoices.count,
+          pending_invoices_count: pending_invoices.count,
+          total_paid: total_paid,
+          total_pending: total_pending,
+          total_all: total_all,
+          all_invoices: all_invoices # Merged and sorted invoices
         }, status: :ok
       end
 
@@ -67,9 +68,20 @@ module Api
 
       # Strong parameters for invoice creation and update
       def invoice_params
-        params.require(:invoice).permit(:company_name, :gst_number, :phone_number, :address,
-                                        :company_website, :job_title, :work_email, :gst_percentage, 
-                                        :status, :total_amount, line_items: [:description, :quantity, :unit_price])
+          params.require(:invoice).permit(
+            :company_name,
+            :gst_number,
+            :phone_number,
+            :address,
+            :company_website,
+            :job_title,
+            :work_email,
+            :gst_percentage,
+            :total_amount,
+            :status,
+            line_items: [:description, :quantity, :unit_price] # <<< this
+          )
+
       end
     end
   end
