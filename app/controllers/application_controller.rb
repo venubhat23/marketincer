@@ -6,7 +6,6 @@ class ApplicationController < ActionController::API
  def authenticate_user!
     token = request.headers['Authorization']&.split(' ')&.last
     decoded_token = JsonWebToken.decode(token)
-
     if decoded_token && decoded_token[:user_id]
       @current_user = User.find_by(id: decoded_token[:user_id])
       render json: { error: 'User not found' }, status: :unauthorized unless @current_user
