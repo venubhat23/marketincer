@@ -42,8 +42,8 @@ module Api
         invoices = @current_user.invoices
 
         # Separate invoices into paid and pending categories
-        paid_invoices = invoices.where(status: 'Paid')
-        pending_invoices = invoices.where(status: 'Pending')
+        paid_invoices = invoices.where(status: 'paid')
+        pending_invoices = invoices.where(status: 'pending')
 
         # Calculate totals
         total_paid = paid_invoices.sum(:total_amount)
@@ -79,6 +79,7 @@ module Api
             :gst_percentage,
             :total_amount,
             :status,
+            :due_date,
             line_items: [:description, :quantity, :unit_price] # <<< this
           )
 
