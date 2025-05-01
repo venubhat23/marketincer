@@ -34,7 +34,7 @@ Rails.application.routes.draw do
         end
       end
 
-      resources :invoices, only: [:create, :update] do
+      resources :invoices do
         member do
           put :update_status
         end
@@ -43,7 +43,7 @@ Rails.application.routes.draw do
         end
       end
 
-    resources :purchase_orders, only: [:create, :update, :index] do
+    resources :purchase_orders do
       collection do
         get 'dashboard'  # Dashboard API
       end

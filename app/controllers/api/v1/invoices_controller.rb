@@ -29,17 +29,19 @@ module Api
       # PUT /api/v1/invoices/:id
       def update
         invoice = @current_user.invoices.find(params[:id])
-        
-        # Update basic parameters
+
+        # Update basic attributes
         invoice.assign_attributes(basic_params)
-        
-        # Explicitly handle line_items separately
+
+        # Update line_items if provided
         if params[:invoice][:line_items].present?
-          # Convert line_items to a format Rails will accept
-          invoice.line_items = params[:invoice][:line_items].map(&:to_hash)
+          permitted_line_items = params[:invoice][:line_items].map do |line_item|
+            line_item.permit(:description, :quantity, :unit_price).to_h
+          end
+          invoice.line_items = permitted_line_items
         end
 
-        if invoice.update(basic_params)
+        if invoice.save
           render json: { message: 'Invoice updated successfully', invoice: invoice }, status: :ok
         else
           render json: { errors: invoice.errors.full_messages }, status: :unprocessable_entity
@@ -54,6 +56,29 @@ module Api
           render json: { message: 'Invoice status updated', invoice: invoice }, status: :ok
         else
           render json: { errors: invoice.errors.full_messages }, status: :unprocessable_entity
+        end
+      end
+
+      # DELETE /api/v1/invoices/:id
+      def destroy
+        invoice = @current_user.invoices.find_by(id: params[:id])
+
+        if invoice
+          invoice.destroy
+          render json: { message: 'Invoice deleted successfully' }, status: :ok
+        else
+          render json: { error: 'Invoice not found or not authorized' }, status: :not_found
+        end
+      end
+
+      # GET /api/v1/invoices/:id
+      def show
+        invoice = @current_user.invoices.find_by(id: params[:id])
+
+        if invoice
+          render json: { invoice: invoice }, status: :ok
+        else
+          render json: { error: 'Invoice not found or not authorized' }, status: :not_found
         end
       end
 
