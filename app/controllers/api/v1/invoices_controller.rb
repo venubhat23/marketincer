@@ -6,19 +6,40 @@ module Api
 
       # POST /api/v1/invoices
       def create
-        invoice = @current_user.invoices.build(invoice_params)
+        # Start by building an invoice with permitted basic parameters
+        invoice = @current_user.invoices.build(basic_params)
+        
+        # Handle line_items explicitly - convert to an array of hashes
+        if params[:invoice][:line_items].present?
+            # Permit the line items parameters before converting to hashes
+            permitted_line_items = params[:invoice][:line_items].map do |line_item|
+              line_item.permit(:description, :quantity, :unit_price).to_h
+            end
+            
+            invoice.line_items = permitted_line_items
+        end
         if invoice.save
           render json: { message: 'Invoice created successfully', invoice: invoice }, status: :created
         else
           render json: { errors: invoice.errors.full_messages }, status: :unprocessable_entity
         end
+
       end
 
       # PUT /api/v1/invoices/:id
       def update
         invoice = @current_user.invoices.find(params[:id])
+        
+        # Update basic parameters
+        invoice.assign_attributes(basic_params)
+        
+        # Explicitly handle line_items separately
+        if params[:invoice][:line_items].present?
+          # Convert line_items to a format Rails will accept
+          invoice.line_items = params[:invoice][:line_items].map(&:to_hash)
+        end
 
-        if invoice.update(invoice_params)
+        if invoice.update(basic_params)
           render json: { message: 'Invoice updated successfully', invoice: invoice }, status: :ok
         else
           render json: { errors: invoice.errors.full_messages }, status: :unprocessable_entity
@@ -42,8 +63,8 @@ module Api
         invoices = @current_user.invoices
 
         # Separate invoices into paid and pending categories
-        paid_invoices = invoices.where(status: 'paid')
-        pending_invoices = invoices.where(status: 'pending')
+        paid_invoices = invoices.where(status: 'Paid')
+        pending_invoices = invoices.where(status: 'Pending')
 
         # Calculate totals
         total_paid = paid_invoices.sum(:total_amount)
@@ -66,23 +87,22 @@ module Api
 
       private
 
-      # Strong parameters for invoice creation and update
-      def invoice_params
-          params.require(:invoice).permit(
-            :company_name,
-            :gst_number,
-            :phone_number,
-            :address,
-            :company_website,
-            :job_title,
-            :work_email,
-            :gst_percentage,
-            :total_amount,
-            :status,
-            :due_date,
-            line_items: [:description, :quantity, :unit_price] # <<< this
-          )
-
+      # Strong parameters for basic invoice attributes (without line_items)
+      def basic_params
+        params.require(:invoice).permit(
+          :company_name,
+          :customer,
+          :gst_number,
+          :phone_number,
+          :address,
+          :company_website,
+          :job_title,
+          :work_email,
+          :gst_percentage,
+          :total_amount,
+          :status,
+          :due_date
+        )
       end
     end
   end
