@@ -39,7 +39,6 @@ module Api
         end
       end
 
-      # PUT /api/v1/purchase_orders/:id
       def update
         purchase_order = @current_user.purchase_orders.find_by(id: params[:id])
 
@@ -49,10 +48,14 @@ module Api
 
         purchase_order.assign_attributes(purchase_order_params.except(:line_items))
 
-        if params[:purchase_order][:line_items].present?
-          permitted_line_items = params[:purchase_order][:line_items].map do |item|
+        if params[:purchase_order].key?(:line_items)
+          # If key exists (even if empty), update accordingly
+          line_items_param = params[:purchase_order][:line_items]
+
+          permitted_line_items = line_items_param.map do |item|
             item.permit(:description, :quantity, :unit_price).to_h
           end
+
           purchase_order.line_items = permitted_line_items
         end
 
@@ -97,7 +100,7 @@ module Api
         params.require(:purchase_order).permit(
           :company_name, :gst_number, :phone_number, :address, :customer,
           :company_website, :job_title, :work_email, :gst_percentage, 
-          :status, :order_number, :customer,
+          :status, :order_number, :customer,:total_amount,
           line_items: [:description, :quantity, :unit_price]
         )
       end
