@@ -88,8 +88,8 @@ module Api
         invoices = @current_user.invoices
 
         # Separate invoices into paid and pending categories
-        paid_invoices = invoices.where(status: 'Paid')
-        pending_invoices = invoices.where(status: 'Pending')
+        paid_invoices = invoices.where(status: ['Paid', 'paid'])
+        pending_invoices = invoices.where(status: ['Pending', 'pending'])
 
         # Calculate totals
         total_paid = paid_invoices.sum(:total_amount)
