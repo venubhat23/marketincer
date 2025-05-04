@@ -12,7 +12,7 @@ class PostPublisherService
   def publish
     service = LinkedinShareService.new(
       access_token: @page.access_token,
-      person_urn: "urn:li:person:#{@page.social_account_id}"
+      person_urn: "urn:li:person:#{@page.social_id}"
     )
 
     service.post_image(
