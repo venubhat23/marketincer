@@ -6,7 +6,7 @@ module Api
       def exchange_token
         code = params[:code]
         
-        unless code.present? && redirect_uri.present?
+        unless code.present?
           return render json: { error: "Missing required parameters" }, status: :bad_request
         end
         
