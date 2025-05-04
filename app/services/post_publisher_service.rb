@@ -10,8 +10,6 @@ class PostPublisherService
   end
 
   def publish
-    binding.pry
-
     if @page.page_type == "instagram" || @page.page_type == "facebook"
       Rails.logger.info("Starting publication process for post ID: #{@post.id}")
 
