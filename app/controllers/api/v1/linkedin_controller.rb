@@ -5,14 +5,16 @@ module Api
     class LinkedinController < ApplicationController
       def exchange_token
         code = params[:code]
+        redirect_uri = params[:redirect_uri]
         
-        unless code.present?
+        unless code.present? && redirect_uri.present?
           return render json: { error: "Missing required parameters" }, status: :bad_request
         end
         
         token_params = {
           grant_type: 'authorization_code',
           code: code,
+          redirect_uri: redirect_uri,
           client_id: '77ufne14jzxbbc',
           client_secret: 'WPL_AP1.Q1h1nSOAtOfOgsNL.9zPzwA=='
         }
@@ -31,7 +33,7 @@ module Api
           
           if response.code == '200' && response_body['access_token']
 
-
+            
             render json: { 
               access_token: response_body['access_token'],
               expires_in: response_body['expires_in']
