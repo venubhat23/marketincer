@@ -45,7 +45,6 @@ class SocialPageConnectorService
     ) do |account|
       account.access_token = @page_params[:access_token]
       account.user_info = @page_params[:user]
-      account.provider = 'instagram'
     end
   end
 
@@ -63,7 +62,7 @@ class SocialPageConnectorService
     social_account.social_pages.create!(
       name: @page_params[:name],
       username: @page_params[:username],
-      page_type: @page_params[:page_type],
+      page_type: "instagram",
       social_id: @page_params[:social_id],
       page_id: @page_params[:page_id],
       picture_url: @page_params[:picture_url],
@@ -71,8 +70,6 @@ class SocialPageConnectorService
       connected: true,
       page_info: @page_params[:user]
     )
-  rescue ActiveRecord::RecordInvalid => e
-    Rails.logger.error("Failed to create social page: #{e.message}")
-    raise
   end
 end
+
