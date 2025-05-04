@@ -50,10 +50,17 @@ gem "thruster", require: false
 
 # Use Rack CORS for handling Cross-Origin Resource Sharing (CORS), making cross-origin Ajax possible
 # gem "rack-cors"
+gem 'omniauth'
+gem 'omniauth-linkedin-oauth2'
+gem 'httparty'
+gem 'dotenv-rails', groups: [:development, :test] # optional
 
 group :development, :test do
   gem "letter_opener"
-
+# In your Gemfile
+  gem 'pry'
+  gem 'pry-byebug'  # Adds step, next, finish, and continue commands
+  # or
   # See https://guides.rubyonrails.org/debugging_rails_applications.html#debugging-with-the-debug-gem
   gem "debug", platforms: %i[ mri windows ], require: "debug/prelude"
 

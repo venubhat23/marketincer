@@ -34,6 +34,9 @@ Rails.application.routes.draw do
         end
       end
 
+      post '/linkedin/exchange-token', to: 'linkedin#exchange_token'
+      get '/linkedin/profile', to: 'linkedin#get_profile'
+
       resources :invoices do
         member do
           put :update_status
