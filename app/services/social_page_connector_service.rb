@@ -45,6 +45,7 @@ class SocialPageConnectorService
     ) do |account|
       account.access_token = @page_params[:access_token]
       account.user_info = @page_params[:user]
+      account.provider = 'instagram'
     end
   end
 
