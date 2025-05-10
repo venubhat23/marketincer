@@ -6,9 +6,11 @@ module Api
       def exchange_token
         code = params[:code]
         redirect_uri = params[:redirect_uri]
+
         unless code.present? && redirect_uri.present?
           return render json: { error: "Missing required parameters" }, status: :bad_request
         end
+
         token_params = {
           grant_type: 'authorization_code',
           code: code,
@@ -16,36 +18,47 @@ module Api
           client_id: '77ufne14jzxbbc',
           client_secret: 'WPL_AP1.Q1h1nSOAtOfOgsNL.9zPzwA=='
         }
-        
+
         begin
           uri = URI('https://www.linkedin.com/oauth/v2/accessToken')
           http = Net::HTTP.new(uri.host, uri.port)
           http.use_ssl = true
-          
+
           request = Net::HTTP::Post.new(uri)
           request.set_form_data(token_params)
           request['Content-Type'] = 'application/x-www-form-urlencoded'
-          
+
           response = http.request(request)
           response_body = JSON.parse(response.body)
-          
+
           if response.code == '200' && response_body['access_token']
             # Get user profile with the access token
             user_profile = fetch_user_profile(response_body['access_token'])
-            
+
             if user_profile[:success]
+              # --- Transform picture field here ---
+              picture_url = user_profile[:data]["picture"]
+              user_profile[:data]["picture"] = {
+                "data" => {
+                  "height" => 50,
+                  "width" => 50,
+                  "is_silhouette" => false,
+                  "url" => picture_url
+                }
+              }
+
               # Connect LinkedIn page
               if @current_user.present?
                 page_connector = LinkedinPageConnectorService.new(@current_user, {
                   access_token: response_body['access_token'],
                   user_info: user_profile[:data],
-                  picture_url: user_profile[:data]['picture'] # LinkedIn API might not provide this directly
+                  picture_url: picture_url
                 })
-                
+
                 begin
                   social_page = page_connector.connect
-                  
-                  render json: { 
+
+                  render json: {
                     status: 'success',
                     message: 'Page connected successfully',
                     access_token: response_body['access_token'],
@@ -57,7 +70,7 @@ module Api
                   render json: { error: "Failed to connect LinkedIn page", details: e.message }, status: :unprocessable_entity
                 end
               else
-                render json: { 
+                render json: {
                   access_token: response_body['access_token'],
                   expires_in: response_body['expires_in'],
                   user_profile: user_profile[:data]
@@ -73,6 +86,7 @@ module Api
           render json: { error: "Error exchanging code for token", details: e.message }, status: :internal_server_error
         end
       end
+
 
       def get_profile
         access_token = params[:access_token]
