@@ -2,37 +2,104 @@ module Api
   module V1
     class PostsController < ApplicationController
       before_action :authenticate_user!
-      before_action :set_social_page, only: [:create, :schedule]
       before_action :set_post, only: [:update, :destroy]
 
-      # Create a new post
+      # Create posts for multiple social_page_ids
       def create
-        post = @current_user.posts.new(post_params.merge(account_id: params[:social_page_id]))
-        post.social_page = @social_page
+        created_posts = []
+        errors = []
 
-        if post.save
-          if post.status == "scheduled"
-            render json: { status: "success", message: "Post scheduled successfully", post: post_response(post) }
-          elsif post.status != "draft"
-            begin
-              PostPublisherService.new(post).publish
-              render json: { status: "success", publish_log: post.publish_log, post: post_response(post) }
-            rescue StandardError => e
-              render json: { status: "error", message: post.publish_log, post: { id: post.id, status: post.status, error: e.message } }, status: :unprocessable_entity
+        params[:social_page_ids].each do |social_page_id|
+          social_page = SocialPage.find_by(social_id: social_page_id)
+
+          unless social_page
+            errors << { social_page_id: social_page_id, error: "Social Page not found" }
+            next
+          end
+
+          post = @current_user.posts.new(post_params.merge(account_id: social_page_id))
+          post.social_page = social_page
+
+          if post.save
+            if post.status == "scheduled"
+              created_posts << { message: "Post scheduled successfully", post: post_response(post) }
+            elsif post.status != "draft"
+              begin
+                PostPublisherService.new(post).publish
+                created_posts << { publish_log: post.publish_log, post: post_response(post) }
+              rescue StandardError => e
+                errors << { post_id: post.id, status: post.status, error: e.message, log: post.publish_log }
+              end
+            else
+              created_posts << { post: post_response(post) }
             end
           else
-            render json: { status: "success", post: post_response(post) }
+            errors << { social_page_id: social_page_id, error: post.errors.full_messages.join(", ") }
           end
+        end
+
+        if errors.any?
+          render json: { status: "partial_success", posts: created_posts, errors: errors }, status: :multi_status
         else
-          render json: { status: "error", message: post.errors.full_messages.join(", ") }, status: :unprocessable_entity
+          render json: { status: "success", posts: created_posts }
         end
       end
 
-      # Search posts
+      # Schedule posts for multiple social_page_ids
+      def schedule
+        created_posts = []
+        errors = []
+
+        params[:social_page_ids].each do |social_page_id|
+          social_page = SocialPage.find_by(social_id: social_page_id)
+
+          unless social_page
+            errors << { social_page_id: social_page_id, error: "Social Page not found" }
+            next
+          end
+
+          if params[:existing_post_id].present?
+            old_post = Post.find_by(id: params[:existing_post_id])
+            old_post.destroy if old_post
+          end
+
+          post = @current_user.posts.new(post_params.merge(account_id: social_page_id))
+          post.social_page = social_page
+          post.status = "scheduled"
+
+          if post.save
+            PostPublisherWorker.perform_at(post.scheduled_at, post.id)
+            created_posts << { message: "Post scheduled successfully", post: post_response(post) }
+          else
+            errors << { social_page_id: social_page_id, error: post.errors.full_messages.join(", ") }
+          end
+        end
+
+        if errors.any?
+          render json: { status: "partial_success", posts: created_posts, errors: errors }, status: :multi_status
+        else
+          render json: { status: "success", posts: created_posts }
+        end
+      end
+
+      def update
+        if @post.update(post_params)
+          render json: { status: "success", post: post_response(@post) }, status: :ok
+        else
+          render json: { status: "error", message: @post.errors.full_messages.join(", ") }, status: :unprocessable_entity
+        end
+      end
+
+      def destroy
+        if @post.destroy
+          render json: { status: "success", message: "Post deleted successfully" }, status: :ok
+        else
+          render json: { status: "error", message: "Failed to delete post" }, status: :unprocessable_entity
+        end
+      end
+
       def search
         posts = Post.all
-
-        # Apply filters if present
         posts = posts.where(status: params[:postType].strip) if params[:postType].present?
         posts = posts.where(state: params[:state].strip) if params[:state].present?
 
@@ -44,14 +111,12 @@ module Api
         if params[:from].present? && params[:to].present?
           from_date = DateTime.parse(params[:from]) rescue nil
           to_date = DateTime.parse(params[:to]) rescue nil
-          to_date = to_date.end_of_day if to_date # Ensure full day is included
-
+          to_date = to_date.end_of_day if to_date
           posts = posts.where(scheduled_at: from_date..to_date) if from_date && to_date
         end
 
         posts = posts.where(account_id: params[:account_ids]) if params[:account_ids].present?
 
-        # Format response
         formatted_posts = posts.map do |post|
           social_page = post.social_page
           social_account = social_page&.social_account
@@ -87,7 +152,6 @@ module Api
               created_at: social_page.created_at,
               updated_at: social_page.updated_at
             }
-            # No need to include social_page and social_account explicitly if page_data is enough
           end
 
           post_data
@@ -96,48 +160,7 @@ module Api
         render json: { posts: formatted_posts, total: posts.count }
       end
 
-      # Update an existing post
-      def update
-        if @post.update(post_params)
-          render json: { status: "success", post: post_response(@post) }, status: :ok
-        else
-          render json: { status: "error", message: @post.errors.full_messages.join(", ") }, status: :unprocessable_entity
-        end
-      end
-
-      # Delete a post
-      def destroy
-        if @post.destroy
-          render json: { status: "success", message: "Post deleted successfully" }, status: :ok
-        else
-          render json: { status: "error", message: "Failed to delete post" }, status: :unprocessable_entity
-        end
-      end
-
-      # Schedule a post
-      def schedule
-       if params[:existing_post_id].present?
-          old_post = Post.find_by(id: params[:existing_post_id])
-          old_post.destroy if old_post
-        end
-        post = @current_user.posts.new(post_params.merge(account_id: params[:social_page_id]))
-        post.social_page = @social_page
-        post.status = "scheduled"
-
-        if post.save
-          PostPublisherWorker.perform_at(post.scheduled_at, post.id)
-          render json: { status: "success", message: "Post scheduled successfully", post: post_response(post) }
-        else
-          render json: { status: "error", message: post.errors.full_messages.join(", ") }, status: :unprocessable_entity
-        end
-      end
-
       private
-
-      def set_social_page
-        @social_page = SocialPage.find_by(social_id: params[:social_page_id])
-        render json: { status: "error", message: "Social Page not found" }, status: :not_found unless @social_page
-      end
 
       def set_post
         @post = Post.find_by(id: params[:id])
