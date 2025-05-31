@@ -3,6 +3,9 @@ Rails.application.routes.draw do
 
   namespace :api do
     namespace :v1 do
+
+      get 'influencer/analytics', to: 'influencer_analytics#show'
+
       # Authentication routes
       post 'signup', to: 'registrations#create'
       post 'login', to: 'sessions#create'
