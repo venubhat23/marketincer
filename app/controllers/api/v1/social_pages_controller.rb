@@ -37,7 +37,6 @@ module Api
             sp.posts.delete_all
             sp.destroy
           end
-          social_account.destroy
 
           render json: { status: 'success', message: 'Successfully disconnected' }
         end
