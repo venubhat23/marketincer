@@ -45,7 +45,7 @@ module Api
             access_token = response_body['access_token']
             
             if params[:type] == "pages"
-              # Step 1: Call organizationAcls to get organization URN
+              # Step 1: Call organizationAcls to get all organization URNs
               org_uri = URI("https://api.linkedin.com/v2/organizationAcls?q=roleAssignee")
               org_http = Net::HTTP.new(org_uri.host, org_uri.port)
               org_http.use_ssl = true
@@ -57,39 +57,50 @@ module Api
               org_response = org_http.request(org_request)
               org_data = JSON.parse(org_response.body)
 
-              approved_admin_org = org_data["elements"].find do |element|
+              # Get all approved administrator organizations and extract unique org IDs
+              approved_admin_orgs = org_data["elements"].select do |element|
                 element["state"] == "APPROVED" && element["role"] == "ADMINISTRATOR"
               end
 
-              unless approved_admin_org
-                return render json: { error: "No approved administrator organization found" }, status: :unprocessable_entity
+              unless approved_admin_orgs.any?
+                return render json: { error: "No approved administrator organizations found" }, status: :unprocessable_entity
               end
 
-              organization_urn = approved_admin_org["organization"]
-              organization_id = organization_urn.split(":").last
+              # Extract unique organization IDs to avoid duplicates
+              unique_org_ids = approved_admin_orgs.map { |org| org["organization"].split(":").last }.uniq
 
-              # Step 2: Fetch organization details
-              org_details_uri = URI("https://api.linkedin.com/v2/organizations/#{organization_id}")
-              org_details_http = Net::HTTP.new(org_details_uri.host, org_details_uri.port)
-              org_details_http.use_ssl = true
+              # Step 2: Fetch details for all organizations
+              organizations = []
+              
+              unique_org_ids.each do |organization_id|
+                org_details_uri = URI("https://api.linkedin.com/v2/organizations/#{organization_id}")
+                org_details_http = Net::HTTP.new(org_details_uri.host, org_details_uri.port)
+                org_details_http.use_ssl = true
+                org_details_request = Net::HTTP::Get.new(org_details_uri)
+                org_details_request['Authorization'] = "Bearer #{access_token}"
+                org_details_request['Content-Type'] = 'application/json'
 
-              org_details_request = Net::HTTP::Get.new(org_details_uri)
-              org_details_request['Authorization'] = "Bearer #{access_token}"
-              org_details_request['Content-Type'] = 'application/json'
+                org_details_response = org_details_http.request(org_details_request)
+                
+                if org_details_response.code == '200'
+                  org_details_data = JSON.parse(org_details_response.body)
+                  organizations << org_details_data
+                else
+                  # Log error but continue with other organizations
+                  Rails.logger.error "Failed to fetch organization #{organization_id}: #{org_details_response.body}"
+                end
+              end
 
-              org_details_response = org_details_http.request(org_details_request)
-              org_details_data = JSON.parse(org_details_response.body)
-
-              if org_details_response.code != '200'
-                return render json: { error: "Failed to fetch organization details", details: org_details_data }, status: :unprocessable_entity
+              if organizations.empty?
+                return render json: { error: "Failed to fetch any organization details" }, status: :unprocessable_entity
               end
 
               return render json: {
                 status: 'success',
-                message: 'Organization fetched successfully',
+                message: 'Organizations fetched successfully',
                 access_token: access_token,
                 expires_in: response_body['expires_in'],
-                organization: org_details_data
+                organizations: organizations
               }
             else
               user_profile = fetch_user_profile(access_token)
