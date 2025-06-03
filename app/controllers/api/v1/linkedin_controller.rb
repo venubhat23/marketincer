@@ -4,13 +4,13 @@ module Api
       before_action :authenticate_user!
 
       def exchange_token
-
         code = params[:code]
         redirect_uri = params[:redirect_uri]
 
         unless code.present? && redirect_uri.present?
           return render json: { error: "Missing required parameters" }, status: :bad_request
         end
+        
         if params[:type] == "profile"
           token_params = {
             grant_type: 'authorization_code',
@@ -29,7 +29,6 @@ module Api
           }
         end
 
-
         begin
           uri = URI('https://www.linkedin.com/oauth/v2/accessToken')
           http = Net::HTTP.new(uri.host, uri.port)
@@ -43,52 +42,102 @@ module Api
           response_body = JSON.parse(response.body)
 
           if response.code == '200' && response_body['access_token']
-            # Get user profile with the access token
-            user_profile = fetch_user_profile(response_body['access_token'])
+            access_token = response_body['access_token']
+            
+            if params[:type] == "pages"
+              # Step 1: Call organizationAcls to get organization URN
+              org_uri = URI("https://api.linkedin.com/v2/organizationAcls?q=roleAssignee")
+              org_http = Net::HTTP.new(org_uri.host, org_uri.port)
+              org_http.use_ssl = true
 
-            if user_profile[:success]
-              # --- Transform picture field here ---
-              picture_url = user_profile[:data]["picture"]
-              user_profile[:data]["picture"] = {
-                "data" => {
-                  "height" => 50,
-                  "width" => 50,
-                  "is_silhouette" => false,
-                  "url" => picture_url
-                }
+              org_request = Net::HTTP::Get.new(org_uri)
+              org_request['Authorization'] = "Bearer #{access_token}"
+              org_request['Content-Type'] = 'application/json'
+
+              org_response = org_http.request(org_request)
+              org_data = JSON.parse(org_response.body)
+
+              approved_admin_org = org_data["elements"].find do |element|
+                element["state"] == "APPROVED" && element["role"] == "ADMINISTRATOR"
+              end
+
+              unless approved_admin_org
+                return render json: { error: "No approved administrator organization found" }, status: :unprocessable_entity
+              end
+
+              organization_urn = approved_admin_org["organization"]
+              organization_id = organization_urn.split(":").last
+
+              # Step 2: Fetch organization details
+              org_details_uri = URI("https://api.linkedin.com/v2/organizations/#{organization_id}")
+              org_details_http = Net::HTTP.new(org_details_uri.host, org_details_uri.port)
+              org_details_http.use_ssl = true
+
+              org_details_request = Net::HTTP::Get.new(org_details_uri)
+              org_details_request['Authorization'] = "Bearer #{access_token}"
+              org_details_request['Content-Type'] = 'application/json'
+
+              org_details_response = org_details_http.request(org_details_request)
+              org_details_data = JSON.parse(org_details_response.body)
+
+              if org_details_response.code != '200'
+                return render json: { error: "Failed to fetch organization details", details: org_details_data }, status: :unprocessable_entity
+              end
+
+              return render json: {
+                status: 'success',
+                message: 'Organization fetched successfully',
+                access_token: access_token,
+                expires_in: response_body['expires_in'],
+                organization: org_details_data
               }
+            else
+              user_profile = fetch_user_profile(access_token)
 
-              # Connect LinkedIn page
-              if @current_user.present?
-                page_connector = LinkedinPageConnectorService.new(@current_user, {
-                  access_token: response_body['access_token'],
-                  user_info: user_profile[:data],
-                  picture_url: picture_url
-                })
-
-                begin
-                  social_page = page_connector.connect
-
-                  render json: {
-                    status: 'success',
-                    message: 'Page connected successfully',
-                    access_token: response_body['access_token'],
-                    expires_in: response_body['expires_in'],
-                    user_profile: user_profile[:data],
-                    social_page: social_page
+              if user_profile[:success]
+                # --- Transform picture field here ---
+                picture_url = user_profile[:data]["picture"]
+                user_profile[:data]["picture"] = {
+                  "data" => {
+                    "height" => 50,
+                    "width" => 50,
+                    "is_silhouette" => false,
+                    "url" => picture_url
                   }
-                rescue => e
-                  render json: { error: "Failed to connect LinkedIn page", details: e.message }, status: :unprocessable_entity
+                }
+
+                # Connect LinkedIn page
+                if @current_user.present?
+                  page_connector = LinkedinPageConnectorService.new(@current_user, {
+                    access_token: access_token,
+                    user_info: user_profile[:data],
+                    picture_url: picture_url
+                  })
+
+                  begin
+                    social_page = page_connector.connect
+
+                    render json: {
+                      status: 'success',
+                      message: 'Page connected successfully',
+                      access_token: access_token,
+                      expires_in: response_body['expires_in'],
+                      user_profile: user_profile[:data],
+                      social_page: social_page
+                    }
+                  rescue => e
+                    render json: { error: "Failed to connect LinkedIn page", details: e.message }, status: :unprocessable_entity
+                  end
+                else
+                  render json: {
+                    access_token: access_token,
+                    expires_in: response_body['expires_in'],
+                    user_profile: user_profile[:data]
+                  }
                 end
               else
-                render json: {
-                  access_token: response_body['access_token'],
-                  expires_in: response_body['expires_in'],
-                  user_profile: user_profile[:data]
-                }
+                render json: { error: "Failed to fetch user profile", details: user_profile[:error] }, status: :unprocessable_entity
               end
-            else
-              render json: { error: "Failed to fetch user profile", details: user_profile[:error] }, status: :unprocessable_entity
             end
           else
             render json: { error: "Failed to exchange code for token", details: response_body }, status: :unprocessable_entity
@@ -97,7 +146,6 @@ module Api
           render json: { error: "Error exchanging code for token", details: e.message }, status: :internal_server_error
         end
       end
-
 
       def get_profile
         access_token = params[:access_token]
