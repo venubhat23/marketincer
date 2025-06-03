@@ -11,7 +11,7 @@ module Api
         unless code.present? && redirect_uri.present?
           return render json: { error: "Missing required parameters" }, status: :bad_request
         end
-        if parmas[:type] == "profile"
+        if params[:type] == "profile"
           token_params = {
             grant_type: 'authorization_code',
             code: code,
