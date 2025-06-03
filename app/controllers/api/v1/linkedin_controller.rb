@@ -4,20 +4,31 @@ module Api
       before_action :authenticate_user!
 
       def exchange_token
+
         code = params[:code]
         redirect_uri = params[:redirect_uri]
 
         unless code.present? && redirect_uri.present?
           return render json: { error: "Missing required parameters" }, status: :bad_request
         end
+        if parmas[:type] = "profile"
+          token_params = {
+            grant_type: 'authorization_code',
+            code: code,
+            redirect_uri: redirect_uri,
+            client_id: '77ufne14jzxbbc',
+            client_secret: 'WPL_AP1.Q1h1nSOAtOfOgsNL.9zPzwA=='
+          }
+        else
+          token_params = {
+            grant_type: 'authorization_code',
+            code: code,
+            redirect_uri: redirect_uri,
+            client_id: '780iu7cgaok1lf',
+            client_secret: 'WPL_AP1.pBnxoZgtOaxFkqeN.4Z42vA=='
+          }
+        end
 
-        token_params = {
-          grant_type: 'authorization_code',
-          code: code,
-          redirect_uri: redirect_uri,
-          client_id: '77ufne14jzxbbc',
-          client_secret: 'WPL_AP1.Q1h1nSOAtOfOgsNL.9zPzwA=='
-        }
 
         begin
           uri = URI('https://www.linkedin.com/oauth/v2/accessToken')
