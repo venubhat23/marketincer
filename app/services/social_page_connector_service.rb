@@ -40,7 +40,7 @@ class SocialPageConnectorService
   private
 
   def find_or_create_social_account
-    @user.social_accounts.find_or_create_by!(
+    return @user.social_accounts.find_or_create_by!(
       provider: @page_params[:page_type] == 'ig_business' ? 'instagram' : 'facebook'
     ) do |account|
       account.access_token = @page_params[:access_token]

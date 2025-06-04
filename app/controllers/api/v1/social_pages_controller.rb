@@ -33,10 +33,8 @@ module Api
             return render json: { status: 'error', message: 'Invalid social page or social account ID' }, status: :unprocessable_entity
           end
 
-          social_account.social_pages.each do |sp|
-            sp.posts.delete_all
-            sp.destroy
-          end
+          social_page.posts.delete_all
+          social_page.destroy
 
           render json: { status: 'success', message: 'Successfully disconnected' }
         end
