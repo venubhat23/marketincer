@@ -8,8 +8,8 @@ module Api
       def create
         created_posts = []
         errors = []
-
-        params[:social_page_ids].each do |social_page_id|
+        flattened_uniq_array = params[:social_page_ids].flatten.uniq
+        flattened_uniq_array.each do |social_page_id|
           social_page = SocialPage.find_by(social_id: social_page_id)
 
           unless social_page
