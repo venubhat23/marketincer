@@ -17,7 +17,7 @@ module Api
             next
           end
 
-          post = @current_user.posts.new(post_params.merge(account_id: social_page_id))
+          post = @current_user.posts.new(post_params.merge(account_id: social_page.social_id))
           post.social_page = social_page
 
           if post.save
