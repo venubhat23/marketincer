@@ -23,7 +23,7 @@ module Api
           }
 
           # Use LinkedinPageConnectorService to connect the page
-          page_connector = LinkedinPageConnectorService.new(current_user, page_params)
+          page_connector = LinkedinPageConnectorService.new(@current_user, page_params)
           social_page = page_connector.connect
 
           render json: {
