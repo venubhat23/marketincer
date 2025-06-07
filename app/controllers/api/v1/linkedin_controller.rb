@@ -118,6 +118,7 @@ module Api
 
             # Extract unique organization IDs to avoid duplicates
             unique_org_ids = approved_admin_orgs.map { |org| org["organization"].split(":").last }.uniq
+              puts "Organization IDS: #{unique_org_ids}"
 
             # Step 2: Fetch details for all organizations
             organizations = []
@@ -131,7 +132,12 @@ module Api
               org_details_request['Content-Type'] = 'application/json'
 
               org_details_response = org_details_http.request(org_details_request)
-              
+
+              puts "Organization ID: #{organization_id}"
+              puts "Response Code: #{org_details_response.code}"
+              puts "Response Body: #{org_details_response.body}"
+
+
               if org_details_response.code == '200'
                 org_details_data = JSON.parse(org_details_response.body)
                 organizations << org_details_data
