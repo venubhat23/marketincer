@@ -92,7 +92,6 @@ module Api
 
         response = http.request(request)
         response_body = JSON.parse(response.body)
-
         if response.code == '200' && response_body['access_token']
           access_token = response_body['access_token']
           if params[:type] == "pages"
@@ -124,6 +123,7 @@ module Api
             organizations = []
             
             unique_org_ids.each do |organization_id|
+
               org_details_uri = URI("https://api.linkedin.com/v2/organizations/#{organization_id}")
               org_details_http = Net::HTTP.new(org_details_uri.host, org_details_uri.port)
               org_details_http.use_ssl = true

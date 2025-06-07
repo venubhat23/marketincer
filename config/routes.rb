@@ -10,6 +10,7 @@ Rails.application.routes.draw do
       post 'signup', to: 'registrations#create'
       post 'login', to: 'sessions#create'
       get 'activate/:token', to: 'registrations#activate', as: 'activate'
+      post '/linkedin/connect', to: 'linkedin#connect'  # New connect endpoint
 
       # User profile update route
       put 'user/update_profile', to: 'users#update_profile'
