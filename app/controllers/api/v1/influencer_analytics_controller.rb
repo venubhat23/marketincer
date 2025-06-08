@@ -311,7 +311,6 @@ module Api
           followers: account_info[:followers_count] || 0,
           following: account_info[:follows_count] || 0,
           bio: account_info[:biography] || "No bio available",
-          category: page.category || "Lifestyle",
           location: "Unknown", # You might want to add this to your SocialPage model
           engagement_rate: "#{engagement_rate}%",
           earned_media: (account_metrics['reach'] || 0) / 100,
