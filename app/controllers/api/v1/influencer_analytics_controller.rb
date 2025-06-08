@@ -298,6 +298,22 @@ module Api
           }
         end
 
+        # Build comprehensive campaign analytics with all totals
+        campaign_analytics = {
+          total_likes: account_metrics['likes'] || 0,
+          total_comments: account_metrics['comments'] || 0,
+          total_shares: account_metrics['shares'] || 0,
+          total_saves: account_metrics['saves'] || 0,
+          total_views: account_metrics['views'] || 0,
+          total_interactions: account_metrics['total_interactions'] || 0,
+          total_reach: account_metrics['reach'] || 0,
+          total_profile_visits: account_metrics['profile_links_taps'] || 0,
+          total_replies: account_metrics['replies'] || 0,
+          accounts_engaged: account_metrics['accounts_engaged'] || 0,
+          follows_and_unfollows: account_metrics['follows_and_unfollows'] || 0,
+          total_engagement: "#{engagement_rate}%"
+        }
+
         # Build base analytics object
         analytics = {
           page_id: page.page_id,
@@ -309,12 +325,7 @@ module Api
           following: account_info[:follows_count] || 0,
           bio: account_info[:biography] || "No bio available",
           engagement_rate: "#{engagement_rate}%",
-          campaign_analytics: {
-            total_likes: account_metrics['likes'] || 0,
-            total_comments: account_metrics['comments'] || 0,
-            total_engagement: "#{engagement_rate}%",
-            total_reach: account_metrics['reach'] || account_info[:followers_count] || 0
-          },
+          campaign_analytics: campaign_analytics,
           recent_posts: formatted_posts,
           raw_insights: insights_result
         }
