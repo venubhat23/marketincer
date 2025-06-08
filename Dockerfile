@@ -1,6 +1,3 @@
-# syntax=docker/dockerfile:1
-# check=error=true
-
 # This Dockerfile is designed for production, not development. Use with Kamal or build'n'run by hand:
 # docker build -t marketplace_api .
 # docker run -d -p 80:80 -e RAILS_MASTER_KEY=<value from config/master.key> --name marketplace_api marketplace_api
@@ -23,7 +20,9 @@ RUN apt-get update -qq && \
 ENV RAILS_ENV="production" \
     BUNDLE_DEPLOYMENT="1" \
     BUNDLE_PATH="/usr/local/bundle" \
-    BUNDLE_WITHOUT="development"
+    BUNDLE_WITHOUT="development" \
+    RAILS_MASTER_KEY=5ee342bedf4744f06f520c3633b59b0f
+
 
 # Throw-away build stage to reduce size of final image
 FROM base AS build
