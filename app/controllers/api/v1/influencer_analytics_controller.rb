@@ -53,6 +53,58 @@ module Api
         end
       end
 
+      def show_single
+        begin
+          page_id = params[:page_id]
+          social_page = SocialPage.find_by(page_id: page_id)
+          
+          if social_page.nil?
+            return render json: {
+              status: "error",
+              message: "Social page not found",
+              data: nil
+            }, status: 404
+          end
+
+          if social_page.access_token.blank?
+            return render json: {
+              status: "error", 
+              message: "No valid access token for this page",
+              data: nil
+            }, status: 400
+          end
+
+          latest_post = social_page.posts.order(created_at: :desc).first
+          
+          unless latest_post
+            return render json: {
+              status: "error",
+              message: "No posts found for this page", 
+              data: nil
+            }, status: 404
+          end
+
+          puts "🔄 Collecting insights for page: #{social_page.name} (ID: #{social_page.page_id})"
+          
+          insights_result = collect_instagram_insights(latest_post, social_page, social_page.page_id, social_page.access_token)
+          page_analytics = transform_insights_to_analytics(insights_result, social_page, latest_post)
+
+          render json: {
+            status: "success",
+            message: "Analytics data collected successfully",
+            data: page_analytics,
+            collected_at: Time.current.iso8601
+          }
+
+        rescue => e
+          render json: {
+            status: "error",
+            message: "Failed to collect analytics: #{e.message}",
+            data: nil
+          }, status: 500
+        end
+      end
+
       private
 
       def collect_instagram_insights(post, page, page_id, access_token)
@@ -278,6 +330,21 @@ module Api
         post_insights = insights_result.dig(:data, :latest_post_insights, :metrics) || {}
         audience_insights = insights_result.dig(:data, :audience_insights) || []
 
+        # Helper method to format numbers
+        def format_number(number)
+          return "0" if number.nil? || number == 0
+          
+          num = number.to_f
+          
+          if num >= 1_000_000
+            "#{(num / 1_000_000).round(1)}M"
+          elsif num >= 1_000
+            "#{(num / 1_000).round(1)}K"
+          else
+            num.to_i.to_s
+          end
+        end
+
         # Calculate engagement rate
         followers = account_info[:followers_count] || 1
         total_interactions = account_metrics['total_interactions'] || 0
@@ -298,21 +365,22 @@ module Api
           }
         end
 
-        # Build comprehensive campaign analytics with all totals
-        campaign_analytics = {
-          total_likes: account_metrics['likes'] || 0,
-          total_comments: account_metrics['comments'] || 0,
-          total_shares: account_metrics['shares'] || 0,
-          total_saves: account_metrics['saves'] || 0,
-          total_views: account_metrics['views'] || 0,
-          total_interactions: account_metrics['total_interactions'] || 0,
-          total_reach: account_metrics['reach'] || 0,
-          total_profile_visits: account_metrics['profile_links_taps'] || 0,
-          total_replies: account_metrics['replies'] || 0,
-          accounts_engaged: account_metrics['accounts_engaged'] || 0,
-          follows_and_unfollows: account_metrics['follows_and_unfollows'] || 0,
-          total_engagement: "#{engagement_rate}%"
-        }
+        # Build comprehensive campaign analytics in the new format
+        campaign_analytics = [
+          { value: format_number(account_metrics['likes'] || 0), label: "Total Likes" },
+          { value: format_number(account_metrics['comments'] || 0), label: "Total Comments" },
+          { value: format_number(account_metrics['shares'] || 0), label: "Total Shares" },
+          { value: format_number(account_metrics['saves'] || 0), label: "Total Saves" },
+          { value: format_number(account_metrics['views'] || 0), label: "Total Views" },
+          { value: format_number(account_metrics['total_interactions'] || 0), label: "Total Interactions" },
+          { value: format_number(account_metrics['reach'] || 0), label: "Total Reach" },
+          { value: format_number(account_metrics['profile_links_taps'] || 0), label: "Total Profile Visits" },
+          { value: format_number(account_metrics['replies'] || 0), label: "Total Replies" },
+          { value: format_number(account_metrics['accounts_engaged'] || 0), label: "Accounts Engaged" },
+          { value: format_number(account_metrics['follows_and_unfollows'] || 0), label: "Follows and Unfollows" },
+          { value: "#{engagement_rate}%", label: "Total Engagement" },
+          { value: format_number(account_metrics['profile_links_taps'] || 0), label: "Total Clicks" }
+        ]
 
         # Build base analytics object
         analytics = {
@@ -447,56 +515,51 @@ module Api
         result
       end
 
-      def show_single
-        begin
-          page_id = params[:page_id]
-          social_page = SocialPage.find_by(page_id: page_id)
+      # Test data method for development
+      def generate_test_campaign_analytics
+        def format_number(number)
+          return "0" if number.nil? || number == 0
           
-          if social_page.nil?
-            return render json: {
-              status: "error",
-              message: "Social page not found",
-              data: nil
-            }, status: 404
-          end
-
-          if social_page.access_token.blank?
-            return render json: {
-              status: "error", 
-              message: "No valid access token for this page",
-              data: nil
-            }, status: 400
-          end
-
-          latest_post = social_page.posts.order(created_at: :desc).first
+          num = number.to_f
           
-          unless latest_post
-            return render json: {
-              status: "error",
-              message: "No posts found for this page", 
-              data: nil
-            }, status: 404
+          if num >= 1_000_000
+            "#{(num / 1_000_000).round(1)}M"
+          elsif num >= 1_000
+            "#{(num / 1_000).round(1)}K"
+          else
+            num.to_i.to_s
           end
-
-          puts "🔄 Collecting insights for page: #{social_page.name} (ID: #{social_page.page_id})"
-          
-          insights_result = collect_instagram_insights(latest_post, social_page, social_page.page_id, social_page.access_token)
-          page_analytics = transform_insights_to_analytics(insights_result, social_page, latest_post)
-
-          render json: {
-            status: "success",
-            message: "Analytics data collected successfully",
-            data: page_analytics,
-            collected_at: Time.current.iso8601
-          }
-
-        rescue => e
-          render json: {
-            status: "error",
-            message: "Failed to collect analytics: #{e.message}",
-            data: nil
-          }, status: 500
         end
+
+        # Generate realistic test data
+        base_likes = rand(15000..35000)
+        base_comments = rand(200..800)
+        base_shares = rand(8000..15000)
+        base_saves = rand(300..600)
+        base_views = rand(50000..100000)
+        base_reach = rand(25000..45000)
+        base_profile_visits = rand(600..1200)
+        
+        followers = rand(10000..50000)
+        total_interactions = base_likes + base_comments + base_shares + base_saves
+        engagement_rate = ((total_interactions.to_f / followers) * 100).round(1)
+
+        # Return in the new array format
+        [
+          { value: format_number(base_likes), label: "Total Likes" },
+          { value: format_number(base_comments), label: "Total Comments" },
+          { value: format_number(base_shares), label: "Total Shares" },
+          { value: format_number(base_saves), label: "Total Saves" },
+          { value: format_number(base_views), label: "Total Views" },
+          { value: format_number(total_interactions), label: "Total Interactions" },
+          { value: format_number(base_reach), label: "Total Reach" },
+          { value: format_number(base_profile_visits), label: "Total Profile Visits" },
+          { value: format_number(rand(50..200)), label: "Total Replies" },
+          { value: format_number(rand(1000..5000)), label: "Accounts Engaged" },
+          { value: format_number(rand(-100..300)), label: "Follows and Unfollows" },
+          { value: "#{engagement_rate}%", label: "Total Engagement" },
+          { value: format_number(base_profile_visits), label: "Total Clicks" }
+        ]
       end
 
     end
