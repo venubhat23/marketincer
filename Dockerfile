@@ -21,7 +21,7 @@ RUN bundle install
 COPY . .
 
 # Precompile assets and prepare DB (optional, can also be done during CI/CD)
-RUN RAILS_ENV=production bundle exec rake assets:precompile
+RUN bundle exec rails db:migrate
 
 # Expose the port Rails will run on (ensure ECS maps this port too)
 EXPOSE 3000
