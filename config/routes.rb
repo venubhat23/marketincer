@@ -4,8 +4,7 @@ Rails.application.routes.draw do
   namespace :api do
     namespace :v1 do
 
-      get 'influencer_analytics', to: 'influencer_analytics#show'
-      
+      get 'influencer/analytics', to: 'influencer_analytics#show'
       # Optional: Get analytics for a specific social page
       get 'influencer_analytics/:page_id', to: 'influencer_analytics#show_single'
 
