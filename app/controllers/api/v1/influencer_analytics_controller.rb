@@ -278,6 +278,21 @@ module Api
         post_insights = insights_result.dig(:data, :latest_post_insights, :metrics) || {}
         audience_insights = insights_result.dig(:data, :audience_insights) || []
 
+        # Helper method to format numbers
+        def format_number(number)
+          return "0" if number.nil? || number == 0
+          
+          num = number.to_f
+          
+          if num >= 1_000_000
+            "#{(num / 1_000_000).round(1)}M"
+          elsif num >= 1_000
+            "#{(num / 1_000).round(1)}K"
+          else
+            num.to_i.to_s
+          end
+        end
+
         # Calculate engagement rate
         followers = account_info[:followers_count] || 1
         total_interactions = account_metrics['total_interactions'] || 0
@@ -298,20 +313,22 @@ module Api
           }
         end
 
-        # Build comprehensive campaign analytics with all totals
+        # Build comprehensive campaign analytics with formatted values
         campaign_analytics = {
-          total_likes: account_metrics['likes'] || 0,
-          total_comments: account_metrics['comments'] || 0,
-          total_shares: account_metrics['shares'] || 0,
-          total_saves: account_metrics['saves'] || 0,
-          total_views: account_metrics['views'] || 0,
-          total_interactions: account_metrics['total_interactions'] || 0,
-          total_reach: account_metrics['reach'] || 0,
-          total_profile_visits: account_metrics['profile_links_taps'] || 0,
-          total_replies: account_metrics['replies'] || 0,
-          accounts_engaged: account_metrics['accounts_engaged'] || 0,
-          follows_and_unfollows: account_metrics['follows_and_unfollows'] || 0,
-          total_engagement: "#{engagement_rate}%"
+          total_likes: format_number(account_metrics['likes'] || 0),
+          total_comments: format_number(account_metrics['comments'] || 0),
+          total_shares: format_number(account_metrics['shares'] || 0),
+          total_saves: format_number(account_metrics['saves'] || 0),
+          total_views: format_number(account_metrics['views'] || 0),
+          total_interactions: format_number(account_metrics['total_interactions'] || 0),
+          total_reach: format_number(account_metrics['reach'] || 0),
+          total_profile_visits: format_number(account_metrics['profile_links_taps'] || 0),
+          total_replies: format_number(account_metrics['replies'] || 0),
+          accounts_engaged: format_number(account_metrics['accounts_engaged'] || 0),
+          follows_and_unfollows: format_number(account_metrics['follows_and_unfollows'] || 0),
+          total_engagement: "#{engagement_rate}%",
+          # Add mapping for frontend display names
+          total_clicks: format_number(account_metrics['profile_links_taps'] || 0) # Profile visits = clicks
         }
 
         # Build base analytics object
@@ -445,6 +462,52 @@ module Api
         end
 
         result
+      end
+
+      # Test data method for development
+      def generate_test_campaign_analytics
+        def format_number(number)
+          return "0" if number.nil? || number == 0
+          
+          num = number.to_f
+          
+          if num >= 1_000_000
+            "#{(num / 1_000_000).round(1)}M"
+          elsif num >= 1_000
+            "#{(num / 1_000).round(1)}K"
+          else
+            num.to_i.to_s
+          end
+        end
+
+        # Generate realistic test data
+        base_likes = rand(15000..35000)
+        base_comments = rand(200..800)
+        base_shares = rand(8000..15000)
+        base_saves = rand(300..600)
+        base_views = rand(50000..100000)
+        base_reach = rand(25000..45000)
+        base_profile_visits = rand(600..1200)
+        
+        followers = rand(10000..50000)
+        total_interactions = base_likes + base_comments + base_shares + base_saves
+        engagement_rate = ((total_interactions.to_f / followers) * 100).round(1)
+
+        {
+          total_likes: format_number(base_likes),
+          total_comments: format_number(base_comments),
+          total_shares: format_number(base_shares),
+          total_saves: format_number(base_saves),
+          total_views: format_number(base_views),
+          total_interactions: format_number(total_interactions),
+          total_reach: format_number(base_reach),
+          total_profile_visits: format_number(base_profile_visits),
+          total_replies: format_number(rand(50..200)),
+          accounts_engaged: format_number(rand(1000..5000)),
+          follows_and_unfollows: format_number(rand(-100..300)),
+          total_engagement: "#{engagement_rate}%",
+          total_clicks: format_number(base_profile_visits)
+        }
       end
 
       def show_single
