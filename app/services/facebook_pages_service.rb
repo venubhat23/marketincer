@@ -8,7 +8,7 @@ class FacebookPagesService
 
   def fetch_pages
     response = HTTP.get(
-      "https://graph.facebook.com/v18.0/me/accounts?fields=id,name,access_token,category,category_list,tasks,picture.width(200).height(200)",
+      "https://graph.facebook.com/v18.0/me/accounts?fields=id,name,access_token,category,category_list,tasks,picture.width(50).height(50)",
       params: { access_token: @auth_token }
     )
     data = JSON.parse(response.body)
@@ -52,7 +52,7 @@ class FacebookPagesService
   def fetch_user_info(access_token)
     begin
       response = HTTP.get(
-        "https://graph.facebook.com/v18.0/me?fields=id,name,email,picture.width(200).height(200)",
+        "https://graph.facebook.com/v18.0/me?fields=id,name,email,picture.width(50).height(50)",
         params: { access_token: access_token }
       )
       user_data = JSON.parse(response.body)
@@ -67,7 +67,7 @@ class FacebookPagesService
       Rails.logger.error "Error fetching user info: #{e.message}"
       {}
     end
-  end
+  end 
 end
 
 
