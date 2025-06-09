@@ -397,7 +397,7 @@ module Api
           campaign_analytics: campaign_analytics,
           recent_posts: formatted_posts,
           raw_insights: insights_result,
-          image_url = page.picture_url
+          image_url: page.picture_url
         }
 
         # Only add earned_media if reach data is available
