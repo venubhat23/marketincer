@@ -361,7 +361,8 @@ module Api
             likes: post_item[:like_count] || 0,
             comments: post_item[:comments_count] || 0,
             shares: post_insights['shares'] || 0,
-            thumbnail_url: post_item[:media_url] || "https://via.placeholder.com/300x300"
+            thumbnail_url: post_item[:media_url] || "https://via.placeholder.com/300x300",
+            image_url: post.picture_url
           }
         end
 
