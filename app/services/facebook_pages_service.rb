@@ -33,7 +33,7 @@ class FacebookPagesService
         page_id: page["id"],
         picture_url: picture_url,
         access_token: page["access_token"],
-        connected: true,
+        connected: page.connected,
         user_profile: user_info,
         page_info: {
           id: page["id"],
