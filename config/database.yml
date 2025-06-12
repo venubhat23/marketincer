@@ -7,25 +7,26 @@ default: &default
   host: dpg-cv5ik8rqf0us73f0pisg-a.oregon-postgres.render.com
   port: 5432
 
-development:
-  <<: *default
-  database: markettincer_db
 
 test:
   <<: *default
   database: markettincer_db_test
 
-production:
+production: &production
   adapter: postgresql
   encoding: unicode
   pool: 5
-  database: postgres
+  database: prod_db
   username: postgres_admin
   password: postgres_admin_password
   host: marketincer-prod.cde64o6y2zb8.us-east-2.rds.amazonaws.com
   # host: marketincer-rds.cxmomsg8m9f6.us-east-2.rds.amazonaws.com
   port: 5432
   # url: postgresql://markettincer_db_2txk_user:fh4n7a2WdLBtfCdbQMQd6lOHqzon7i2v@dpg-cvpul9q4d50c73bv611g-a/markettincer_db_2txk
+
+development:
+  <<: *production
+  # database: markettincer_db
 
 # Action Cable configuration
 cable:
