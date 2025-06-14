@@ -5,7 +5,7 @@ class AiContractGenerationService
   
   def generate
     begin
-      # Try to generate with Hugging Face API first
+      # #Try to generate with Hugging Face API first
       ai_generated_content = call_huggingface_api(@description)
       
       if ai_generated_content && !ai_generated_content.empty?
