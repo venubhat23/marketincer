@@ -1,6 +1,6 @@
 class AiContractGenerationService
-  API_URL = 'https://api-inference.huggingface.co/models/microsoft/DialoGPT-medium'
-  API_KEY = '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'
+  # API_URL = 'https://api-inference.huggingface.co/models/microsoft/DialoGPT-medium'
+  # API_KEY = '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'
   
   def initialize(description)
     @description = description
