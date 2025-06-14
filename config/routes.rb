@@ -3,7 +3,18 @@ Rails.application.routes.draw do
 
   namespace :api do
     namespace :v1 do
-
+      resources :contracts do
+        collection do
+          get :templates
+          post :generate, to: 'contracts#generate_ai_contract'  # AI generation endpoint
+          get :ai_status, to: 'contracts#ai_generation_status'  # Check AI service status
+        end
+        
+        member do
+          post :duplicate
+          post :regenerate, to: 'contracts#regenerate_ai_contract'  # Regenerate AI contract
+        end
+      end
       get 'influencer/analytics', to: 'influencer_analytics#show'
       # Optional: Get analytics for a specific social page
       get 'influencer_analytics/:page_id', to: 'influencer_analytics#show_single'
