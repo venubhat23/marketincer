@@ -26,7 +26,9 @@ gem 'rack-cors'
 gem 'sidekiq'
 gem 'redis'
 gem 'sidekiq'
-
+gem 'kaminari' # For pagination
+gem 'httparty' # For AI API calls (optional)
+gem 'rack-cors' # For CORS handling
 
 # Add these gems
 gem "bcrypt"
