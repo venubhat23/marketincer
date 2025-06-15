@@ -6,29 +6,25 @@ Rails.application.routes.draw do
       resources :contracts do
         collection do
           get :templates
-          post :generate, to: 'contracts#generate_ai_contract'  # AI generation endpoint
-          get :ai_status, to: 'contracts#ai_generation_status'  # Check AI service status
+          post :generate, to: 'contracts#generate_ai_contract'
+          get :ai_status, to: 'contracts#ai_generation_status'
         end
-        
+
         member do
           post :duplicate
-          post :regenerate, to: 'contracts#regenerate_ai_contract'  # Regenerate AI contract
+          post :regenerate, to: 'contracts#regenerate_ai_contract'
         end
       end
+
       get 'influencer/analytics', to: 'influencer_analytics#show'
-      # Optional: Get analytics for a specific social page
       get 'influencer_analytics/:page_id', to: 'influencer_analytics#show_single'
 
-      # Authentication routes
       post 'signup', to: 'registrations#create'
       post 'login', to: 'sessions#create'
       get 'activate/:token', to: 'registrations#activate', as: 'activate'
-      post '/linkedin/connect', to: 'linkedin#connect'  # New connect endpoint
-
-      # User profile update route
+      post '/linkedin/connect', to: 'linkedin#connect'
       put 'user/update_profile', to: 'users#update_profile'
 
-      # Social media integration routes
       resources :social_accounts, only: [] do
         collection do
           post :get_pages
@@ -43,7 +39,6 @@ Rails.application.routes.draw do
         end
       end
 
-      # Posts routes
       resources :posts, only: [:create, :update, :destroy] do
         collection do
           post :schedule
@@ -63,16 +58,16 @@ Rails.application.routes.draw do
         end
       end
 
-    resources :purchase_orders do
-      collection do
-        get 'dashboard'  # Dashboard API
+      resources :purchase_orders do
+        collection do
+          get 'dashboard'
+        end
       end
     end
-
-
-
-    end
   end
+
+  # ✅ Handle OPTIONS requests for CORS preflight
+  match "*path", to: "application#preflight", via: [:options]
 
   # Mount Sidekiq Web UI at `/sidekiq`
   mount Sidekiq::Web => '/sidekiq'
