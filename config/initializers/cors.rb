@@ -5,7 +5,7 @@
 
 Rails.application.config.middleware.insert_before 0, Rack::Cors do
   allow do
-    origins 'https://app.marketincer.com'  # Only allow frontend origin
+    origins '*'  # Only allow frontend origin
 
     resource '*',
       headers: :any,

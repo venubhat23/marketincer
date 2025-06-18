@@ -52,13 +52,12 @@ class LinkedinPageConnectorService
       Rails.logger.info "LinkedIn Page already exists for user: #{@page_params[:user_info]&.dig('name')}"
       return existing_page
     end
-
     social_account.social_pages.create!(
-      name: @page_params[:user_info]&.dig('name'),
+      name: @page_params[:user_info]&.dig('name').is_a?(String) ? @page_params[:user_info]&.dig('name') : @page_params[:user_info]&.dig('name')&.dig('localized', 'en_US'),
       username: @page_params[:user_info]&.dig('email'),
       page_type: 'linkedin',
-      social_id: @page_params[:user_info]&.dig('sub'),
-      page_id: @page_params[:user_info]&.dig('sub'),
+      social_id: @page_params[:user_info]&.dig('sub') || @page_params[:user_info]["id"],
+      page_id:@page_params[:user_info]&.dig('sub') || @page_params[:user_info]["id"],
       picture_url: @page_params[:picture_url],
       access_token: @page_params[:access_token],
       connected: true,
