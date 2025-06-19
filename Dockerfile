@@ -4,7 +4,8 @@ FROM ruby:3.2
 # Set environment variables
 ENV RAILS_ENV=production \
     BUNDLE_DEPLOYMENT=1 \
-    BUNDLE_PATH=/bundle
+    BUNDLE_PATH=/bundle \
+    SECRET_KEY_BASE=5ee342bedf4744f06f520c3633b59b0f
 
 # Install essential dependencies
 RUN apt-get update -qq && \
