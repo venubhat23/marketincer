@@ -21,7 +21,7 @@ RUN bundle install
 COPY . .
 
 # Run database migrations
-# RUN bundle exec rails db:migrate
+RUN bundle exec rails db:migrate
 
 # Expose the port Rails will run on (ensure ECS maps this port too)
 EXPOSE 3000

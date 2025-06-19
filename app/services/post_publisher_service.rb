@@ -9,6 +9,7 @@ class PostPublisherService
     @logger = Rails.logger
   end
 
+  #test
   def publish
     if @page.page_type == "linkedin"
       if @page.is_page == true
