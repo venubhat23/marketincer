@@ -7,7 +7,7 @@ module Api
       def show
         begin
           # Get all social pages or filter by specific criteria
-          social_pages = SocialPage.includes(:posts).where.not(access_token: [nil, ''])
+          social_pages = SocialPage.includes(:posts).where.not(access_token: [nil, '']).where(page_type: "instagram")
           
           if social_pages.empty?
             return render json: {
