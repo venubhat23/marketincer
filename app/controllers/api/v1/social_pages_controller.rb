@@ -47,7 +47,7 @@ module Api
 
       def page_params
         params.require(:page).permit(
-          :name, :username, :page_type, :social_id, :page_id,
+          :name, :username, :page_type, :social_id, :page_id, :is_page,
           :picture_url, :access_token, user: {}
         )
       end

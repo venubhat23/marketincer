@@ -19,9 +19,9 @@ module Api
           page_params = {
             access_token: params[:access_token],
             user_info: params[:user_info],
-            picture_url: params[:picture_url] # Optional parameter
+            picture_url: params[:picture_url], # Optional parameter,
+            is_page: params[:is_page]
           }
-
           # Use LinkedinPageConnectorService to connect the page
           page_connector = LinkedinPageConnectorService.new(@current_user, page_params)
           social_page = page_connector.connect
@@ -95,6 +95,7 @@ module Api
         if response.code == '200' && response_body['access_token']
           access_token = response_body['access_token']
           if params[:type] == "pages"
+
             # Step 1: Call organizationAcls to get all organization URNs
             org_uri = URI("https://api.linkedin.com/v2/organizationAcls?q=roleAssignee")
             org_http = Net::HTTP.new(org_uri.host, org_uri.port)
@@ -163,7 +164,6 @@ module Api
                 user: org # Store the entire organization info under user
               }
             end
-
             return render json: {
               data: {
                 accounts: accounts

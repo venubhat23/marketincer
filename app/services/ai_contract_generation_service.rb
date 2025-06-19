@@ -1,11 +1,14 @@
 class AiContractGenerationService
+  API_URL = 'https://api-inference.huggingface.co/models/microsoft/DialoGPT-medium'
+  API_KEY = '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'
+  
   def initialize(description)
     @description = description
   end
   
   def generate
     begin
-      # #Try to generate with Hugging Face API first
+      # Try to generate with Hugging Face API first
       ai_generated_content = call_huggingface_api(@description)
       
       if ai_generated_content && !ai_generated_content.empty?

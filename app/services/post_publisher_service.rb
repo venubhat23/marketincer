@@ -11,9 +11,14 @@ class PostPublisherService
 
   def publish
     if @page.page_type == "linkedin"
+      if @page.is_page == true
+       person_urn = "urn:li:company:#{@page.social_id}"
+      else
+        person_urn = "urn:li:person:#{@page.social_id}"
+      end
       service = LinkedinShareService.new(
         access_token: @page.access_token,
-        person_urn: "urn:li:person:#{@page.social_id}"
+        person_urn: person_urn
       )
       service.post_image(
         content: @post.comments,

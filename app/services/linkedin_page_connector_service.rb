@@ -61,7 +61,8 @@ class LinkedinPageConnectorService
       picture_url: @page_params[:picture_url],
       access_token: @page_params[:access_token],
       connected: true,
-      page_info: @page_params[:user_info] || {}
+      page_info: @page_params[:user_info] || {},
+      is_page: @page_params[:is_page]
     )
   end
 end

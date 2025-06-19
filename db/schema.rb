@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.0].define(version: 2025_06_14_055913) do
+ActiveRecord::Schema[8.0].define(version: 2025_06_19_020707) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "pg_catalog.plpgsql"
 
@@ -129,6 +129,7 @@ ActiveRecord::Schema[8.0].define(version: 2025_06_14_055913) do
     t.json "page_info"
     t.datetime "created_at", null: false
     t.datetime "updated_at", null: false
+    t.boolean "is_page", default: false
     t.index ["social_account_id"], name: "index_social_pages_on_social_account_id"
   end
 

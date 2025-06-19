@@ -68,7 +68,8 @@ class SocialPageConnectorService
       picture_url: @page_params[:picture_url],
       access_token: @page_params[:access_token],
       connected: true,
-      page_info: @page_params[:user]
+      page_info: @page_params[:user],
+      is_page: @page_params[:is_page]
     )
   end
 end
