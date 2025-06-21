@@ -3,11 +3,17 @@ module Api
     class InfluencerAnalyticsController < ApplicationController
       require 'net/http'
       require 'json'
+      before_action :authenticate_user!
 
       def show
         begin
           # Get all social pages or filter by specific criteria
-          social_pages = SocialPage.includes(:posts).where.not(access_token: [nil, '']).where(page_type: "instagram")
+          social_pages = SocialPage.joins(:social_account)
+                                   .includes(:posts)
+                                   .where.not(access_token: [nil, ''])
+                                   .where(page_type: "instagram")
+                                   .where(social_accounts: { user_id: @current_user.id })
+          # social_pages = SocialPage.includes(:posts).where.not(access_token: [nil, '']).where(page_type: "instagram")
           
           if social_pages.empty?
             return render json: {
