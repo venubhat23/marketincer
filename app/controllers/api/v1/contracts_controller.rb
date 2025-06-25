@@ -1,236 +1,383 @@
+# app/controllers/api/v1/contracts_controller.rb
 class Api::V1::ContractsController < ApplicationController
-  before_action :set_contract, only: [:show, :update, :destroy]
-  
+  before_action :set_contract, only: [:show, :update, :destroy, :duplicate, :regenerate_ai_contract]
+
   # GET /api/v1/contracts
   def index
-    @contracts = Contract.all
-    
-    # Filter by category (templates or created contracts)
-    @contracts = @contracts.templates_only if params[:category] == 'template'
-    @contracts = @contracts.contracts_only if params[:category] == 'created'
-    
-    # Search functionality
+    @contracts = Contract.recent
     @contracts = @contracts.search_by_name(params[:search]) if params[:search].present?
-    
-    # Pagination
-    page = params[:page] || 1
-    per_page = params[:per_page] || 20
-    @contracts = @contracts.page(page).per(per_page)
-    
+    @contracts = @contracts.by_status(params[:status]) if params[:status].present?
+    @contracts = @contracts.by_type(params[:contract_type]) if params[:contract_type].present?
+    @contracts = @contracts.page(params[:page] || 1).per(params[:per_page] || 10)
+
     render json: {
-      contracts: @contracts.map { |contract| contract_json(contract) },
-      total_count: @contracts.total_count,
-      current_page: @contracts.current_page,
-      total_pages: @contracts.total_pages,
-      stats: {
-        total_contracts: Contract.contracts_only.count,
-        total_templates: Contract.templates_only.count
-      }
+      success: true,
+      contracts: @contracts.map { |c| contract_summary(c) },
+      total: @contracts.total_count
     }
   end
-  
+
+  # GET /api/v1/contracts/templates
+  def templates
+    templates = Contract.contract_templates
+    render json: { 
+      success: true, 
+      templates: templates, 
+      count: templates.length 
+    }
+  end
+
   # GET /api/v1/contracts/:id
   def show
-    render json: { contract: contract_json(@contract) }
+    render json: { success: true, contract: contract_detail(@contract) }
   end
-  
+
   # POST /api/v1/contracts
   def create
     @contract = Contract.new(contract_params)
+    @contract.date_created ||= Date.today
+    @contract.status = :draft if @contract.status.nil?
     
     if @contract.save
       render json: { 
-        contract: contract_json(@contract),
+        success: true, 
+        contract: contract_detail(@contract),
         message: 'Contract created successfully'
       }, status: :created
     else
-      render json: { error: @contract.errors.full_messages }, status: :unprocessable_entity
-    end
-  end
-  
-  # PATCH/PUT /api/v1/contracts/:id
-  def update
-    if @contract.update(contract_params)
       render json: { 
-        contract: contract_json(@contract),
-        message: 'Contract updated successfully'
-      }
-    else
-      render json: { error: @contract.errors.full_messages }, status: :unprocessable_entity
+        success: false, 
+        message: @contract.errors.full_messages.join(', '),
+        errors: @contract.errors
+      }, status: :unprocessable_entity
     end
   end
-  
+
+  # PUT/PATCH /api/v1/contracts/:id
+  def update
+    # Handle different update actions based on the action parameter
+    case params[:action_type]
+    when 'save_draft'
+      update_contract_draft
+    when 'save_contract'
+      update_contract_signed
+    else
+      update_contract_general
+    end
+  end
+
   # DELETE /api/v1/contracts/:id
   def destroy
     @contract.destroy
-    render json: { message: 'Contract deleted successfully' }
+    render json: { success: true, message: 'Contract deleted successfully' }
   end
-  
-  # GET /api/v1/contracts/templates
-  def templates
-    @templates = Contract.templates_only.order(:name)
-    
-    render json: {
-      templates: @templates.map { |template| contract_json(template) }
-    }
-  end
-  
+
   # POST /api/v1/contracts/:id/duplicate
   def duplicate
-    @original_contract = Contract.find(params[:id])
-    @new_contract = @original_contract.dup
-    @new_contract.name = "#{@original_contract.name} (Copy)"
-    @new_contract.status = 'draft'
-    @new_contract.category = 'created'
+    copy = @contract.dup
+    copy.name = "#{@contract.name} (Copy)"
+    copy.status = :draft
+    copy.action = 'pending'
+    copy.date_created = Date.current
     
-    if @new_contract.save
+    if copy.save
       render json: { 
-        contract: contract_json(@new_contract),
+        success: true, 
+        contract: contract_detail(copy),
         message: 'Contract duplicated successfully'
-      }, status: :created
+      }
     else
-      render json: { error: @new_contract.errors.full_messages }, status: :unprocessable_entity
+      render json: { 
+        success: false, 
+        message: copy.errors.full_messages.join(', ') 
+      }, status: :unprocessable_entity
     end
   end
-  
+
   # POST /api/v1/contracts/generate
   def generate_ai_contract
+    binding.pry
     description = params[:description]
-    contract_type = params[:contract_type] || 'service_agreement'
-    name = params[:name] || "AI Generated Contract - #{Date.current.strftime('%m/%d/%Y')}"
-    
-    if description.blank?
-      render json: { error: 'Description is required for AI contract generation' }, status: :bad_request
-      return
-    end
-    
+    template_id = params[:template_id]
+    use_template = params[:use_template] == 'true' || params[:use_template] == true
+
     begin
-      # Generate contract using AI service
-      ai_service = AiContractGenerationService.new(description)
-      generated_content = ai_service.generate
-      
-      # Create new contract with AI-generated content
-      @contract = Contract.new(
-        name: name,
-        contract_type: contract_type,
-        status: 'draft',
-        category: 'created',
-        content: generated_content,
-        description: description,
-        metadata: {
-          generated_by: 'ai',
-          generation_method: 'huggingface_api',
-          generated_at: Time.current,
-          original_description: description
-        }
-      )
-      
-      if @contract.save
-        render json: {
-          contract: contract_json(@contract),
-          message: 'AI contract generated successfully',
-          ai_generated: true
-        }, status: :created
+      if use_template && template_id.present?
+        # Generate from template
+        result = generate_from_template(template_id)
+      elsif description.present?
+        # Generate using AI
+        result = generate_from_ai(description)
       else
-        render json: { error: @contract.errors.full_messages }, status: :unprocessable_entity
+        return render json: { 
+          success: false, 
+          message: 'Description is required for AI generation or template_id for template usage' 
+        }, status: :bad_request
       end
-      
-    rescue => e
-      Rails.logger.error "AI Contract Generation Error: #{e.message}"
-      render json: { 
-        error: 'Failed to generate AI contract. Please try again or use manual creation.',
-        details: Rails.env.development? ? e.message : nil
-      }, status: :internal_server_error
-    end
-  end
-  
-  # POST /api/v1/contracts/:id/regenerate
-  def regenerate_ai_contract
-    @contract = Contract.find(params[:id])
-    
-    # Check if contract has original description for regeneration
-    original_description = @contract.metadata&.dig('original_description') || @contract.description
-    
-    if original_description.blank?
-      render json: { error: 'Cannot regenerate contract without original description' }, status: :bad_request
-      return
-    end
-    
-    begin
-      # Regenerate content using AI service
-      ai_service = AiContractGenerationService.new(original_description)
-      regenerated_content = ai_service.generate
-      
-      # Update contract with new content
-      @contract.update!(
-        content: regenerated_content,
-        metadata: @contract.metadata.merge({
-          regenerated_at: Time.current,
-          regeneration_count: (@contract.metadata['regeneration_count'] || 0) + 1
-        })
-      )
+
+      if result[:success]
+        render json: {
+          success: true,
+          contract: contract_detail(result[:contract]),
+          message: result[:message]
+        }
+      else
+        render json: {
+          success: false,
+          message: result[:message]
+        }, status: :unprocessable_entity
+      end
+
+    rescue StandardError => e
+      Rails.logger.error "Contract generation failed: #{e.message}"
+      Rails.logger.error e.backtrace.join("\n")
       
       render json: {
-        contract: contract_json(@contract),
-        message: 'Contract regenerated successfully',
-        regenerated: true
-      }
-      
-    rescue => e
-      Rails.logger.error "AI Contract Regeneration Error: #{e.message}"
-      render json: { 
-        error: 'Failed to regenerate contract. Please try again.',
-        details: Rails.env.development? ? e.message : nil
+        success: false,
+        message: 'Contract generation failed. Please try again.',
+        error: e.message
       }, status: :internal_server_error
     end
   end
-  
+
+  # POST /api/v1/contracts/:id/regenerate
+  def regenerate_ai_contract
+    description = params[:description] || @contract.description
+
+    return render json: { 
+      success: false, 
+      message: 'Description is required for regeneration' 
+    }, status: :bad_request if description.blank?
+
+    begin
+      result = generate_from_ai(description, @contract)
+      
+      if result[:success]
+        render json: {
+          success: true,
+          contract: contract_detail(result[:contract]),
+          message: 'Contract regenerated successfully'
+        }
+      else
+        render json: {
+          success: false,
+          message: result[:message]
+        }, status: :unprocessable_entity
+      end
+
+    rescue StandardError => e
+      Rails.logger.error "Contract regeneration failed: #{e.message}"
+      render json: {
+        success: false,
+        message: 'Contract regeneration failed. Please try again.'
+      }, status: :internal_server_error
+    end
+  end
+
   # GET /api/v1/contracts/ai_status
   def ai_generation_status
+    contract_id = params[:contract_id]
+    
+    if contract_id.present?
+      logs = AiGenerationLog.for_contract(contract_id).recent.limit(5)
+    else
+      logs = AiGenerationLog.recent.limit(10)
+    end
+
     render json: {
-      ai_enabled: true,
-      service: 'Hugging Face API',
-      models_available: [
-        'microsoft/DialoGPT-medium',
-        'gpt2',
-        'facebook/blenderbot-400M-distill'
-      ],
-      features: [
-        'AI contract generation',
-        'Contract regeneration',
-        'Fallback to templates',
-        'Error handling'
-      ]
+      success: true,
+      ai_logs: logs.map { |log| ai_log_summary(log) }
     }
   end
-  
+
   private
-  
+
   def set_contract
     @contract = Contract.find(params[:id])
+  rescue ActiveRecord::RecordNotFound
+    render json: { success: false, message: 'Contract not found' }, status: :not_found
   end
-  
+
   def contract_params
-    params.require(:contract).permit(:name, :contract_type, :status, :category, :content, :description, metadata: {})
+    params.require(:contract).permit(
+      :name, :description, :content, :contract_type, :status, 
+      :category, :action, :date_created, metadata: {}
+    )
   end
-  
-  def contract_json(contract)
-    binding.pry
+
+  def update_contract_draft
+    @contract.assign_attributes(contract_params)
+    @contract.status = :draft
+    @contract.action = 'draft'
+
+    if @contract.save
+      render json: { 
+        success: true, 
+        contract: contract_detail(@contract),
+        message: 'Contract saved as draft successfully'
+      }
+    else
+      render json: { 
+        success: false, 
+        message: @contract.errors.full_messages.join(', ') 
+      }, status: :unprocessable_entity
+    end
+  end
+
+  def update_contract_signed
+    @contract.assign_attributes(contract_params)
+    @contract.status = :signed
+    @contract.action = 'signed'
+
+    if @contract.save
+      render json: { 
+        success: true, 
+        contract: contract_detail(@contract),
+        message: 'Contract saved and marked as signed successfully'
+      }
+    else
+      render json: { 
+        success: false, 
+        message: @contract.errors.full_messages.join(', ') 
+      }, status: :unprocessable_entity
+    end
+  end
+
+  def update_contract_general
+    if @contract.update(contract_params)
+      render json: { 
+        success: true, 
+        contract: contract_detail(@contract),
+        message: 'Contract updated successfully'
+      }
+    else
+      render json: { 
+        success: false, 
+        message: @contract.errors.full_messages.join(', ') 
+      }, status: :unprocessable_entity
+    end
+  end
+
+  def generate_from_template(template_id)
+    template = Contract.contract_templates.find { |t| t[:id].to_s == template_id.to_s }
+    
+    unless template
+      return { success: false, message: 'Template not found' }
+    end
+
+    contract = Contract.new(
+      name: template[:name],
+      description: template[:description],
+      contract_type: Contract::CONTRACT_TYPES[template[:contract_type].to_sym],
+      category: Contract::CATEGORIES[template[:category].to_sym],
+      content: template[:template],
+      status: :draft,
+      action: 'draft',
+      date_created: Date.current
+    )
+
+    if contract.save
+      { success: true, contract: contract, message: 'Contract generated from template successfully' }
+    else
+      { success: false, message: contract.errors.full_messages.join(', ') }
+    end
+  end
+
+  def generate_from_ai(description, existing_contract = nil)
+    # Log the AI generation attempt
+    ai_log = AiGenerationLog.create!(
+      contract: existing_contract,
+      description: description,
+      status: :pending
+    )
+
+    begin
+      ai_log.update!(status: :processing)
+      
+      # Generate content using AI service
+      ai_service = AiContractGenerationService.new(description)
+      ai_contract_content = ai_service.generate
+
+      if existing_contract
+        # Update existing contract
+        existing_contract.update!(
+          content: ai_contract_content,
+          description: description,
+          status: :draft,
+          action: 'draft'
+        )
+        contract = existing_contract
+      else
+        # Create new contract
+        contract = Contract.create!(
+          name: "AI Generated - #{description.truncate(50)}",
+          description: description,
+          contract_type: Contract::CONTRACT_TYPES[:service],
+          category: Contract::CATEGORIES[:freelancer],
+          content: ai_contract_content,
+          status: :draft,
+          action: 'draft',
+          date_created: Date.current
+        )
+      end
+
+      # Update AI log with success
+      ai_log.update!(
+        status: :completed,
+        generated_content: ai_contract_content,
+        contract: contract
+      )
+
+      { success: true, contract: contract, message: 'AI contract generated successfully' }
+
+    rescue StandardError => e
+      # Update AI log with failure
+      ai_log.update!(
+        status: :failed,
+        error_message: e.message
+      )
+      
+      { success: false, message: "AI generation failed: #{e.message}" }
+    end
+  end
+
+  def contract_summary(contract)
     {
       id: contract.id,
       name: contract.name,
-      type: contract.contract_type,
-      status: contract.status,
-      category: contract.category,
-      date_created: contract.date_created&.strftime('%b %d, %Y'),
-      action: contract.action.titleize,
-      content: contract.content,
-      description: contract.description,
-      metadata: contract.metadata,
-      ai_generated: contract.metadata&.dig('generated_by') == 'ai',
-      can_regenerate: contract.metadata&.dig('original_description').present?,
+      type: contract.contract_type_sym,
+      type_id: contract.contract_type,
+      status: contract.status_sym,
+      status_id: contract.status,
+      category: contract.category_sym,
+      category_id: contract.category,
+      date_created: contract.date_created,
+      action: contract.action,
+      description: contract.description&.truncate(100),
+      has_content: contract.content.present?,
       created_at: contract.created_at,
       updated_at: contract.updated_at
+    }
+  end
+
+  def contract_detail(contract)
+    contract_summary(contract).merge(
+      content: contract.content,
+      full_description: contract.description,
+      metadata: contract.metadata
+    )
+  end
+
+  def ai_log_summary(log)
+    {
+      id: log.id,
+      contract_id: log.contract_id,
+      description: log.description,
+      status: log.status,
+      error_message: log.error_message,
+      has_content: log.generated_content.present?,
+      created_at: log.created_at,
+      updated_at: log.updated_at
     }
   end
 end
