@@ -284,15 +284,15 @@ class Api::V1::ContractsController < ApplicationController
   end
 
   def generate_from_ai(description, existing_contract = nil)
-    # Log the AI generation attempt
+  # Log the AI generation attempt
     ai_log = AiGenerationLog.create!(
       contract: existing_contract,
       description: description,
-      status: :pending
+      status: AiGenerationLog::STATUS_PENDING
     )
 
     begin
-      ai_log.update!(status: :processing)
+      ai_log.update!(status: AiGenerationLog::STATUS_PROCESSING)
       
       # Generate content using AI service
       ai_service = AiContractGenerationService.new(description)
@@ -303,8 +303,7 @@ class Api::V1::ContractsController < ApplicationController
         existing_contract.update!(
           content: ai_contract_content,
           description: description,
-          status: :draft,
-          action: 'draft'
+          status: AiGenerationLog::STATUS_PENDING # Use correct constant for Contract status
         )
         contract = existing_contract
       else
@@ -315,7 +314,7 @@ class Api::V1::ContractsController < ApplicationController
           contract_type: Contract::CONTRACT_TYPES[:service],
           category: Contract::CATEGORIES[:freelancer],
           content: ai_contract_content,
-          status: :draft,
+          status: AiGenerationLog::STATUS_PENDING, # Use correct constant for Contract status
           action: 'draft',
           date_created: Date.current
         )
@@ -323,7 +322,7 @@ class Api::V1::ContractsController < ApplicationController
 
       # Update AI log with success
       ai_log.update!(
-        status: :completed,
+        status: AiGenerationLog::STATUS_COMPLETED,
         generated_content: ai_contract_content,
         contract: contract
       )
@@ -333,7 +332,7 @@ class Api::V1::ContractsController < ApplicationController
     rescue StandardError => e
       # Update AI log with failure
       ai_log.update!(
-        status: :failed,
+        status: AiGenerationLog::STATUS_FAILED,
         error_message: e.message
       )
       
