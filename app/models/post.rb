@@ -5,7 +5,7 @@ class Post < ApplicationRecord
 
   # validates :account_id, presence: true
 
-  validates :s3_url, presence: true
+  #validates :s3_url, presence: true
   validates :status, presence: true
 end
 
