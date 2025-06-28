@@ -2,8 +2,10 @@
 # contract_type: integer
 # status: integer
 # category: integer
-
 class Contract < ApplicationRecord
+  # Add missing association for AI generation logs
+  has_many :ai_generation_logs, dependent: :destroy
+
   CONTRACT_TYPES = {
     service: 0,
     collaboration: 1,
@@ -53,9 +55,9 @@ class Contract < ApplicationRecord
     CATEGORIES.key(self[:category])
   end
 
-  # Static templates
+  # Cache the contract templates in a class variable for better performance
   def self.contract_templates
-    [
+    @@contract_templates ||= [
       {
         id: 1,
         name: "Service Agreement",

@@ -4,26 +4,36 @@ class Api::V1::ContractsController < ApplicationController
 
   # GET /api/v1/contracts
   def index
-    @contracts = Contract.recent
+    @contracts = Contract.includes(:ai_generation_logs).recent
     @contracts = @contracts.search_by_name(params[:search]) if params[:search].present?
     @contracts = @contracts.by_status(params[:status]) if params[:status].present?
     @contracts = @contracts.by_type(params[:contract_type]) if params[:contract_type].present?
+    
+    # Get total count before pagination
+    total_count = @contracts.count
+    
     @contracts = @contracts.page(params[:page] || 1).per(params[:per_page] || 10)
+
+    # Preload AI generation logs for determining contract type
+    ai_logs_by_contract = @contracts.each_with_object({}) do |contract, hash|
+      hash[contract.id] = contract.ai_generation_logs.any?
+    end
 
     render json: {
       success: true,
-      contracts: @contracts.map { |c| contract_summary(c) },
-      total: @contracts.total_count
+      contracts: @contracts.map { |c| contract_summary(c, ai_logs_by_contract[c.id]) },
+      total: total_count
     }
   end
 
   # GET /api/v1/contracts/templates
   def templates
-    templates = Contract.contract_templates
+    # Use class variable to cache templates to avoid repeated generation
+    @templates ||= Contract.contract_templates
     render json: { 
       success: true, 
-      templates: templates.map { |t| template_summary(t) }, 
-      count: templates.length 
+      templates: @templates.map { |t| template_summary(t) }, 
+      count: @templates.length 
     }
   end
 
@@ -35,12 +45,13 @@ class Api::V1::ContractsController < ApplicationController
   # POST /api/v1/contracts
   def create
     @contract = Contract.new(contract_params)
-    @contract.date_created ||= Date.today
+    @contract.date_created ||= Date.current
     @contract.status = :draft if @contract.status.nil?
-    binding.pry
+    
     if params[:contract]["status"] == "draft"
        @contract.status = 1
     end
+    
     if @contract.save
       render json: { 
         success: true, 
@@ -120,7 +131,7 @@ class Api::V1::ContractsController < ApplicationController
       if result[:success]
         render json: {
           success: true,
-          contract: contract_detail(result[:contract]),
+          ai_log: result[:ai_log],
           message: result[:message]
         }
       else
@@ -138,7 +149,7 @@ class Api::V1::ContractsController < ApplicationController
         success: false,
         message: 'Contract generation failed. Please try again.',
         error: e.message
-      }, status: :internal_server_error
+      }, status: :internal_server_entity
     end
   end
 
@@ -181,9 +192,9 @@ class Api::V1::ContractsController < ApplicationController
     contract_id = params[:contract_id]
     
     if contract_id.present?
-      logs = AiGenerationLog.for_contract(contract_id).recent.limit(5)
+      logs = AiGenerationLog.includes(:contract).for_contract(contract_id).recent.limit(5)
     else
-      logs = AiGenerationLog.recent.limit(10)
+      logs = AiGenerationLog.includes(:contract).recent.limit(10)
     end
 
     render json: {
@@ -261,7 +272,9 @@ class Api::V1::ContractsController < ApplicationController
   end
 
   def generate_from_template(template_id)
-    template = Contract.contract_templates.find { |t| t[:id].to_s == template_id.to_s }
+    # Use cached templates instead of calling class method repeatedly
+    @templates ||= Contract.contract_templates
+    template = @templates.find { |t| t[:id].to_s == template_id.to_s }
     
     unless template
       return { success: false, message: 'Template not found' }
@@ -288,7 +301,6 @@ class Api::V1::ContractsController < ApplicationController
   def generate_from_ai(description, existing_contract = nil)
     # Log the AI generation attempt
     ai_log = AiGenerationLog.create!(
-      contract: existing_contract,
       description: description,
       status: AiGenerationLog::STATUS_PENDING
     )
@@ -305,31 +317,30 @@ class Api::V1::ContractsController < ApplicationController
         existing_contract.update!(
           content: ai_contract_content,
           description: description,
-          status: :draft # Use correct status for Contract
+          status: :draft
         )
         contract = existing_contract
       else
         # Create new contract
-        contract = Contract.create!(
-          name: "AI Generated - #{description.truncate(50)}",
-          description: description,
-          contract_type: Contract::CONTRACT_TYPES[:service],
-          category: Contract::CATEGORIES[:freelancer],
-          content: ai_contract_content,
-          status: :draft, # Use correct status for Contract
-          action: 'draft',
-          date_created: Date.current
-        )
+        # contract = Contract.create!(
+        #   name: "AI Generated - #{description.truncate(50)}",
+        #   description: description,
+        #   contract_type: Contract::CONTRACT_TYPES[:service],
+        #   category: Contract::CATEGORIES[:freelancer],
+        #   content: ai_contract_content,
+        #   status: 1,
+        #   action: 'draft',
+        #   date_created: Date.current
+        # )
       end
 
       # Update AI log with success
       ai_log.update!(
         status: AiGenerationLog::STATUS_COMPLETED,
         generated_content: ai_contract_content,
-        contract: contract
       )
 
-      { success: true, contract: contract, message: 'AI contract generated successfully' }
+      { success: true, ai_log: ai_log, message: 'AI contract generated successfully' }
 
     rescue StandardError => e
       # Update AI log with failure
@@ -342,11 +353,12 @@ class Api::V1::ContractsController < ApplicationController
     end
   end
 
-  def contract_summary(contract)
+  # Optimized contract_summary method - accepts preloaded ai_log flag
+  def contract_summary(contract, has_ai_logs = nil)
     {
       id: contract.id,
       name: contract.name,
-      type: determine_contract_type(contract),
+      type: determine_contract_type(contract, has_ai_logs),
       type_id: contract.contract_type,
       status: determine_contract_status(contract),
       status_id: contract.status,
@@ -372,9 +384,14 @@ class Api::V1::ContractsController < ApplicationController
     }
   end
 
-  def determine_contract_type(contract)
-    # Check if contract was generated by AI
-    if contract.content.present? && AiGenerationLog.exists?(contract: contract)
+  # Optimized to accept preloaded ai_log flag to avoid N+1 queries
+  def determine_contract_type(contract, has_ai_logs = nil)
+    # Use preloaded flag if available, otherwise fallback to query
+    if has_ai_logs.nil?
+      has_ai_logs = contract.ai_generation_logs.any?
+    end
+    
+    if contract.content.present? && has_ai_logs
       'AI Generated'
     else
       'Template'

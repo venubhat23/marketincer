@@ -1,5 +1,4 @@
 class AiGenerationLog < ApplicationRecord
-  belongs_to :contract, optional: true
 
   # Status constants
   STATUS_PENDING    = 0

@@ -14,38 +14,38 @@ ActiveRecord::Schema[8.0].define(version: 2025_06_19_020707) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "pg_catalog.plpgsql"
 
-  create_table "ai_generation_logs", force: :cascade do |t|
-    t.bigint "contract_id"
-    t.text "description", null: false
-    t.text "generated_content"
-    t.integer "status", default: 0
-    t.text "error_message"
-    t.json "ai_response_data", default: {}
-    t.datetime "created_at", null: false
-    t.datetime "updated_at", null: false
-    t.index ["contract_id"], name: "index_ai_generation_logs_on_contract_id"
-    t.index ["created_at"], name: "index_ai_generation_logs_on_created_at"
-    t.index ["status"], name: "index_ai_generation_logs_on_status"
-  end
+    create_table "ai_generation_logs", force: :cascade do |t|
+      t.bigint "contract_id"
+      t.text "description", null: false
+      t.text "generated_content"
+      t.integer "status", default: 0
+      t.text "error_message"
+      t.json "ai_response_data", default: {}
+      t.datetime "created_at", null: false
+      t.datetime "updated_at", null: false
+      t.index ["contract_id"], name: "index_ai_generation_logs_on_contract_id"
+      t.index ["created_at"], name: "index_ai_generation_logs_on_created_at"
+      t.index ["status"], name: "index_ai_generation_logs_on_status"
+    end
 
-  create_table "contracts", force: :cascade do |t|
-    t.string "name", null: false
-    t.integer "contract_type", default: 0
-    t.integer "status", default: 0
-    t.integer "category", default: 0
-    t.date "date_created"
-    t.string "action", default: "pending"
-    t.text "content"
-    t.text "description"
-    t.json "metadata", default: {}
-    t.datetime "created_at", null: false
-    t.datetime "updated_at", null: false
-    t.index ["category"], name: "index_contracts_on_category"
-    t.index ["contract_type"], name: "index_contracts_on_contract_type"
-    t.index ["date_created"], name: "index_contracts_on_date_created"
-    t.index ["name"], name: "index_contracts_on_name"
-    t.index ["status"], name: "index_contracts_on_status"
-  end
+    create_table "contracts", force: :cascade do |t|
+      t.string "name", null: false
+      t.integerger "contract_type", default: 0
+      t.integer "status", default: 0
+      t.integer "category", default: 0
+      t.date "date_created"
+      t.string "action", default: "pending"
+      t.text "content"
+      t.text "description"
+      t.json "metadata", default: {}
+      t.datetime "created_at", null: false
+      t.datetime "updated_at", null: false
+      t.index ["category"], name: "index_contracts_on_category"
+      t.index ["contract_type"], name: "index_contracts_on_contract_type"
+      t.index ["date_created"], name: "index_contracts_on_date_created"
+      t.index ["name"], name: "index_contracts_on_name"
+      t.index ["status"], name: "index_contracts_on_status"
+    end
 
   create_table "invoices", force: :cascade do |t|
     t.bigint "user_id", null: false
