@@ -110,34 +110,70 @@ class Api::V1::ContractsController < ApplicationController
 
   # POST /api/v1/contracts/generate
   def generate_ai_contract
-    description = params[:description]
+    description = params[:description]&.strip
     template_id = params[:template_id]
     use_template = params[:use_template] == 'true' || params[:use_template] == true
+    save_contract = params[:save_contract] == 'true' || params[:save_contract] == true
+
+    # Enhanced validation
+    if use_template && template_id.blank?
+      return render json: { 
+        success: false, 
+        message: 'Template ID is required when using template generation' 
+      }, status: :bad_request
+    end
+
+    if !use_template && description.blank?
+      return render json: { 
+        success: false, 
+        message: 'Description is required for AI contract generation' 
+      }, status: :bad_request
+    end
+
+    # Validate description length and content
+    if description.present? && description.length < 10
+      return render json: { 
+        success: false, 
+        message: 'Description must be at least 10 characters long' 
+      }, status: :bad_request
+    end
 
     begin
+      Rails.logger.info "Contract generation request: template=#{use_template}, description=#{description&.truncate(100)}"
+      
       if use_template && template_id.present?
         # Generate from template
-        result = generate_from_template(template_id)
+        result = generate_from_template(template_id, save_contract)
       elsif description.present?
         # Generate using AI
-        result = generate_from_ai(description)
+        result = generate_from_ai(description, nil, save_contract)
       else
         return render json: { 
           success: false, 
-          message: 'Description is required for AI generation or template_id for template usage' 
+          message: 'Either description or template_id is required' 
         }, status: :bad_request
       end
 
       if result[:success]
-        render json: {
+        response_data = {
           success: true,
-          ai_log: result[:ai_log],
-          message: result[:message]
+          message: result[:message],
+          contract_type: result[:contract_type],
+          generation_method: result[:generation_method],
+          ai_log: result[:ai_log]
         }
+        
+        # Include contract data if it was saved
+        if result[:contract]
+          response_data[:contract] = contract_detail(result[:contract])
+        end
+        
+        render json: response_data
       else
         render json: {
           success: false,
-          message: result[:message]
+          message: result[:message],
+          error_code: result[:error_code]
         }, status: :unprocessable_entity
       end
 
@@ -147,34 +183,47 @@ class Api::V1::ContractsController < ApplicationController
       
       render json: {
         success: false,
-        message: 'Contract generation failed. Please try again.',
-        error: e.message
-      }, status: :internal_server_entity
+        message: 'Contract generation failed due to an internal error. Please try again.',
+        error: Rails.env.development? ? e.message : 'Internal server error'
+      }, status: :internal_server_error
     end
   end
 
   # POST /api/v1/contracts/:id/regenerate
   def regenerate_ai_contract
-    description = params[:description] || @contract.description
+    description = params[:description]&.strip || @contract.description
 
-    return render json: { 
-      success: false, 
-      message: 'Description is required for regeneration' 
-    }, status: :bad_request if description.blank?
+    if description.blank?
+      return render json: { 
+        success: false, 
+        message: 'Description is required for contract regeneration' 
+      }, status: :bad_request
+    end
+
+    if description.length < 10
+      return render json: { 
+        success: false, 
+        message: 'Description must be at least 10 characters long' 
+      }, status: :bad_request
+    end
 
     begin
-      result = generate_from_ai(description, @contract)
+      Rails.logger.info "Contract regeneration request for contract #{@contract.id}"
+      
+      result = generate_from_ai(description, @contract, true)
       
       if result[:success]
         render json: {
           success: true,
           contract: contract_detail(result[:contract]),
-          message: 'Contract regenerated successfully'
+          message: result[:message],
+          generation_method: result[:generation_method]
         }
       else
         render json: {
           success: false,
-          message: result[:message]
+          message: result[:message],
+          error_code: result[:error_code]
         }, status: :unprocessable_entity
       end
 
@@ -182,7 +231,8 @@ class Api::V1::ContractsController < ApplicationController
       Rails.logger.error "Contract regeneration failed: #{e.message}"
       render json: {
         success: false,
-        message: 'Contract regeneration failed. Please try again.'
+        message: 'Contract regeneration failed due to an internal error. Please try again.',
+        error: Rails.env.development? ? e.message : 'Internal server error'
       }, status: :internal_server_error
     end
   end
@@ -271,16 +321,20 @@ class Api::V1::ContractsController < ApplicationController
     end
   end
 
-  def generate_from_template(template_id)
+  def generate_from_template(template_id, save_contract = false)
     # Use cached templates instead of calling class method repeatedly
     @templates ||= Contract.contract_templates
     template = @templates.find { |t| t[:id].to_s == template_id.to_s }
     
     unless template
-      return { success: false, message: 'Template not found' }
+      return { 
+        success: false, 
+        message: 'Template not found',
+        error_code: 'TEMPLATE_NOT_FOUND'
+      }
     end
 
-    contract = Contract.new(
+    contract_data = {
       name: template[:name],
       description: template[:description],
       contract_type: Contract::CONTRACT_TYPES[template[:contract_type].to_sym],
@@ -289,58 +343,115 @@ class Api::V1::ContractsController < ApplicationController
       status: :draft,
       action: 'draft',
       date_created: Date.current
-    )
+    }
 
-    if contract.save
-      { success: true, contract: contract, message: 'Contract generated from template successfully' }
+    if save_contract
+      contract = Contract.new(contract_data)
+      if contract.save
+        return { 
+          success: true, 
+          contract: contract, 
+          message: 'Contract generated from template and saved successfully',
+          generation_method: 'template',
+          contract_type: template[:contract_type]
+        }
+      else
+        return { 
+          success: false, 
+          message: contract.errors.full_messages.join(', '),
+          error_code: 'TEMPLATE_SAVE_FAILED'
+        }
+      end
     else
-      { success: false, message: contract.errors.full_messages.join(', ') }
+      # Return template data without saving
+      return { 
+        success: true, 
+        template_data: contract_data,
+        message: 'Contract template generated successfully',
+        generation_method: 'template',
+        contract_type: template[:contract_type]
+      }
     end
   end
 
-  def generate_from_ai(description, existing_contract = nil)
-    # Log the AI generation attempt
+  def generate_from_ai(description, existing_contract = nil, save_contract = false)
+    # Create AI generation log
     ai_log = AiGenerationLog.create!(
       description: description,
-      status: AiGenerationLog::STATUS_PENDING
+      status: AiGenerationLog::STATUS_PENDING,
+      contract: existing_contract
     )
+
+    Rails.logger.info "Starting AI contract generation with log ID: #{ai_log.id}"
 
     begin
       ai_log.update!(status: AiGenerationLog::STATUS_PROCESSING)
       
-      # Generate content using AI service
+      # Generate content using enhanced AI service
       ai_service = AiContractGenerationService.new(description)
       ai_contract_content = ai_service.generate
 
+      if ai_contract_content.blank?
+        ai_log.update!(
+          status: AiGenerationLog::STATUS_FAILED,
+          error_message: 'AI service returned empty content'
+        )
+        return { 
+          success: false, 
+          message: 'AI failed to generate contract content. Please try again with a more detailed description.',
+          error_code: 'AI_GENERATION_EMPTY',
+          ai_log: ai_log_summary(ai_log)
+        }
+      end
+
+      # Determine contract type from generated content
+      contract_type = determine_contract_type_from_content(ai_contract_content)
+      
       if existing_contract
         # Update existing contract
         existing_contract.update!(
           content: ai_contract_content,
           description: description,
-          status: :draft
+          status: :draft,
+          contract_type: contract_type[:type_id],
+          category: contract_type[:category_id]
         )
         contract = existing_contract
-      else
+      elsif save_contract
         # Create new contract
-        # contract = Contract.create!(
-        #   name: "AI Generated - #{description.truncate(50)}",
-        #   description: description,
-        #   contract_type: Contract::CONTRACT_TYPES[:service],
-        #   category: Contract::CATEGORIES[:freelancer],
-        #   content: ai_contract_content,
-        #   status: 1,
-        #   action: 'draft',
-        #   date_created: Date.current
-        # )
+        contract = Contract.create!(
+          name: generate_contract_name(description, contract_type[:type_name]),
+          description: description,
+          contract_type: contract_type[:type_id],
+          category: contract_type[:category_id],
+          content: ai_contract_content,
+          status: :draft,
+          action: 'draft',
+          date_created: Date.current
+        )
       end
 
       # Update AI log with success
       ai_log.update!(
         status: AiGenerationLog::STATUS_COMPLETED,
         generated_content: ai_contract_content,
+        contract: contract
       )
 
-      { success: true, ai_log: ai_log, message: 'AI contract generated successfully' }
+      Rails.logger.info "AI contract generation completed successfully"
+
+      response_data = { 
+        success: true, 
+        message: existing_contract ? 'Contract regenerated successfully' : 'AI contract generated successfully',
+        generation_method: 'ai',
+        contract_type: contract_type[:type_name],
+        ai_log: ai_log_summary(ai_log)
+      }
+
+      response_data[:contract] = contract if contract
+      response_data[:contract_content] = ai_contract_content if !save_contract
+
+      return response_data
 
     rescue StandardError => e
       # Update AI log with failure
@@ -349,7 +460,46 @@ class Api::V1::ContractsController < ApplicationController
         error_message: e.message
       )
       
-      { success: false, message: "AI generation failed: #{e.message}" }
+      Rails.logger.error "AI contract generation failed: #{e.message}"
+      
+      return { 
+        success: false, 
+        message: "AI contract generation failed: #{e.message}",
+        error_code: 'AI_GENERATION_ERROR',
+        ai_log: ai_log_summary(ai_log)
+      }
+    end
+  end
+
+  def generate_contract_name(description, contract_type)
+    # Generate a meaningful contract name
+    if description.match?(/nike/i)
+      "Nike #{contract_type} - #{Date.current.strftime('%B %Y')}"
+    elsif description.match?(/influencer/i)
+      "Influencer #{contract_type} - #{Date.current.strftime('%B %Y')}"
+    elsif description.match?(/service/i)
+      "Service #{contract_type} - #{Date.current.strftime('%B %Y')}"
+    else
+      "AI Generated #{contract_type} - #{Date.current.strftime('%B %Y')}"
+    end
+  end
+
+  def determine_contract_type_from_content(content)
+    content_lower = content.to_s.downcase
+    
+    case content_lower
+    when /non-disclosure|nda|confidential/
+      { type_name: 'Non-Disclosure Agreement', type_id: Contract::CONTRACT_TYPES[:nda], category_id: Contract::CATEGORIES[:vendor] }
+    when /influencer|social media|brand collaboration/
+      { type_name: 'Influencer Collaboration', type_id: Contract::CONTRACT_TYPES[:collaboration], category_id: Contract::CATEGORIES[:influencer] }
+    when /sponsorship|sponsor/
+      { type_name: 'Sponsorship Agreement', type_id: Contract::CONTRACT_TYPES[:sponsorship], category_id: Contract::CATEGORIES[:brand] }
+    when /employment|job|hiring/
+      { type_name: 'Employment Contract', type_id: Contract::CONTRACT_TYPES[:employment], category_id: Contract::CATEGORIES[:employee] }
+    when /gift|product/
+      { type_name: 'Gifting Agreement', type_id: Contract::CONTRACT_TYPES[:gifting], category_id: Contract::CATEGORIES[:influencer] }
+    else
+      { type_name: 'Service Agreement', type_id: Contract::CONTRACT_TYPES[:service], category_id: Contract::CATEGORIES[:freelancer] }
     end
   end
 
