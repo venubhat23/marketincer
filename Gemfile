@@ -41,6 +41,10 @@ gem 'lograge'
 gem 'amazing_print'
 gem 'ougai'  # Modern structured logging
 
+# AI Services
+gem 'ruby-openai'  # For OpenAI GPT-3.5/GPT-4 integration
+gem 'anthropic'    # For Claude AI integration (backup)
+
 # Deploy this application anywhere as a Docker container [https://kamal-deploy.org]
 gem "kamal", require: false
 

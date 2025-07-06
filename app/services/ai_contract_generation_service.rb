@@ -1,38 +1,56 @@
 class AiContractGenerationService
-  # Updated to use models that are actually deployed on Hugging Face Inference API
-  # Alternative models to try (uncomment one):
-  # API_URL = 'https://api-inference.huggingface.co/models/microsoft/DialoGPT-large'
-   API_URL = 'https://api-inference.huggingface.co/models/gpt2'
-  # API_URL = 'https://api-inference.huggingface.co/models/EleutherAI/gpt-neo-1.3B'
-  # API_URL = 'https://api-inference.huggingface.co/models/microsoft/DialoGPT-small'
+  require 'openai'
+  require 'net/http'
+  require 'json'
   
-  API_KEY = Rails.application.credentials.huggingface_api_key || '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'
+  # Primary AI service configuration
+  OPENAI_API_KEY = Rails.application.credentials.openai_api_key || ENV['OPENAI_API_KEY']
+  HUGGINGFACE_API_KEY = Rails.application.credentials.huggingface_api_key || ENV['HUGGINGFACE_API_KEY'] || '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'
+  
+  # Fallback Hugging Face model URLs
+  HUGGINGFACE_MODELS = [
+    'https://api-inference.huggingface.co/models/microsoft/DialoGPT-large',
+    'https://api-inference.huggingface.co/models/EleutherAI/gpt-neo-2.7B',
+    'https://api-inference.huggingface.co/models/microsoft/DialoGPT-medium',
+    'https://api-inference.huggingface.co/models/gpt2'
+  ].freeze
 
   def initialize(description)
     @description = description
-    @timeout = 60
+    @timeout = 120
     @max_retries = 3
+    @openai_client = setup_openai_client if OPENAI_API_KEY.present?
   end
 
   def generate
     retries = 0
 
     begin
-      # First, let's try to check if the model is available
-      if !model_available?
-        Rails.logger.warn "Model not available, falling back to template"
-        return generate_contract_template
+      # Try OpenAI first (much better quality)
+      if @openai_client
+        Rails.logger.info "Using OpenAI for contract generation"
+        ai_generated_content = generate_with_openai(@description)
+        
+        if ai_generated_content.present? && valid_contract_content?(ai_generated_content)
+          Rails.logger.info("OpenAI contract generated successfully")
+          return format_ai_contract(ai_generated_content)
+        else
+          Rails.logger.warn "OpenAI generation failed, falling back to Hugging Face"
+        end
       end
-      
-      ai_generated_content = call_huggingface_api(@description)
+
+      # Fallback to Hugging Face
+      Rails.logger.info "Using Hugging Face for contract generation"
+      ai_generated_content = generate_with_huggingface(@description)
       
       if ai_generated_content.present? && valid_contract_content?(ai_generated_content)
-        Rails.logger.info("HuggingFace contract response: #{ai_generated_content.truncate(500)}")
+        Rails.logger.info("Hugging Face contract generated successfully")
         return format_ai_contract(ai_generated_content)
       else
-        Rails.logger.warn "AI generation failed or invalid, falling back to template"
-        return generate_contract_template
+        Rails.logger.warn "AI generation failed, falling back to intelligent template"
+        return generate_intelligent_template
       end
+      
     rescue => e
       retries += 1
       if retries <= @max_retries
@@ -41,59 +59,187 @@ class AiContractGenerationService
         retry
       else
         Rails.logger.error "AI Contract Generation failed after #{@max_retries} attempts: #{e.message}"
-        generate_contract_template
+        generate_intelligent_template
       end
     end
   end
 
   private
 
-  def model_available?
-    begin
-      uri = URI(API_URL)
-      http = Net::HTTP.new(uri.host, uri.port)
-      http.use_ssl = true
-      http.read_timeout = 10
-      http.open_timeout = 10
-
-      request = Net::HTTP::Get.new(uri)
-      request['Authorization'] = "Bearer #{API_KEY}"
-      
-      response = http.request(request)
-      
-      # If we get a 200 or 503 (model loading), the model exists
-      return response.code == '200' || response.code == '503'
-    rescue
-      return false
-    end
+  def setup_openai_client
+    return nil unless OPENAI_API_KEY.present?
+    
+    OpenAI::Client.new(
+      access_token: OPENAI_API_KEY,
+      request_timeout: @timeout
+    )
+  rescue => e
+    Rails.logger.error "Failed to setup OpenAI client: #{e.message}"
+    nil
   end
 
-  def call_huggingface_api(description)
-    require 'net/http'
-    require 'json'
+  def generate_with_openai(description)
+    return nil unless @openai_client
 
-    uri = URI(API_URL)
+    prompt = build_advanced_contract_prompt(description)
+    
+    response = @openai_client.chat(
+      parameters: {
+        model: determine_openai_model,
+        messages: [
+          {
+            role: "system",
+            content: build_system_prompt
+          },
+          {
+            role: "user", 
+            content: prompt
+          }
+        ],
+        max_tokens: 4000,
+        temperature: 0.7,
+        top_p: 0.9,
+        frequency_penalty: 0.3,
+        presence_penalty: 0.3
+      }
+    )
+
+    if response.dig("choices", 0, "message", "content")
+      content = response["choices"][0]["message"]["content"]
+      clean_and_format_content(content)
+    else
+      Rails.logger.error "OpenAI API response format unexpected: #{response}"
+      nil
+    end
+    
+  rescue => e
+    Rails.logger.error "OpenAI API error: #{e.message}"
+    nil
+  end
+
+  def determine_openai_model
+    # Use GPT-4 if available, otherwise GPT-3.5
+    models = ['gpt-4', 'gpt-4-turbo-preview', 'gpt-3.5-turbo-16k', 'gpt-3.5-turbo']
+    
+    # For now, use GPT-3.5-turbo as it's most widely available
+    'gpt-3.5-turbo-16k'
+  end
+
+  def build_system_prompt
+    <<~SYSTEM_PROMPT
+      You are an expert legal contract drafting assistant with deep knowledge of contract law, business agreements, and legal documentation standards across multiple jurisdictions including India, US, and UK.
+
+      Your role is to create comprehensive, professional, and legally sound contracts based on user descriptions. You should:
+
+      1. Generate detailed, well-structured contracts with all necessary legal clauses
+      2. Include appropriate sections like parties, recitals, terms, conditions, signatures, etc.
+      3. Use proper legal terminology and formatting
+      4. Ensure contracts are enforceable and protect both parties' interests
+      5. Include relevant boilerplate clauses (governing law, dispute resolution, etc.)
+      6. Adapt the contract type based on the description (service, employment, NDA, etc.)
+      7. Use placeholder values in [BRACKETS] for party-specific information
+      8. Include proper legal disclaimers and notices
+      9. Follow standard contract structure and formatting conventions
+      10. Make contracts comprehensive yet readable
+
+      Always produce complete, professional contracts that would be suitable for actual business use after customization.
+    SYSTEM_PROMPT
+  end
+
+  def build_advanced_contract_prompt(description)
+    contract_type = determine_contract_type(description)
+    entities = extract_entities_from_description(description)
+    
+    <<~PROMPT
+      Please draft a comprehensive #{contract_type} based on the following requirements:
+
+      **Contract Description:** #{description}
+
+      **Detected Contract Type:** #{contract_type}
+      #{entities.present? ? "**Key Entities:** #{entities.join(', ')}" : ''}
+
+      **Requirements:**
+      1. Create a complete, professional contract with all necessary legal sections
+      2. Include proper contract title, parties identification, and recitals
+      3. Add detailed scope of work/services section
+      4. Include comprehensive terms and conditions
+      5. Add payment terms, timelines, and deliverables
+      6. Include termination clauses and dispute resolution
+      7. Add intellectual property rights clauses if applicable
+      8. Include confidentiality provisions if needed
+      9. Add proper signature blocks and witness sections
+      10. Include governing law and jurisdiction clauses
+      11. Add force majeure and other standard boilerplate clauses
+      12. Use placeholder values in [BRACKETS] for customization
+      13. Include legal disclaimers and notices
+
+      **Specific Focus Areas:**
+      - Make it legally sound and enforceable
+      - Ensure it protects both parties' interests
+      - Include industry-specific clauses if applicable
+      - Make it comprehensive yet clear and readable
+      - Follow standard legal contract formatting
+      - Include all necessary legal protections
+
+      Please generate a complete, professional contract that would be suitable for actual business use.
+    PROMPT
+  end
+
+  def extract_entities_from_description(description)
+    entities = []
+    
+    # Extract company names, brands, and other entities
+    entities << "Nike" if description.match?(/nike/i)
+    entities << "Influencer" if description.match?(/influencer/i)
+    entities << "Brand" if description.match?(/brand/i)
+    entities << "Service Provider" if description.match?(/service/i)
+    entities << "Employee" if description.match?(/employ/i)
+    entities << "Contractor" if description.match?(/contract/i)
+    entities << "Vendor" if description.match?(/vendor|supplier/i)
+    entities << "Client" if description.match?(/client/i)
+    entities << "Agency" if description.match?(/agency/i)
+    
+    entities.uniq
+  end
+
+  def generate_with_huggingface(description)
+    HUGGINGFACE_MODELS.each do |model_url|
+      begin
+        Rails.logger.info "Trying Hugging Face model: #{model_url}"
+        content = call_huggingface_api(description, model_url)
+        return content if content.present? && valid_contract_content?(content)
+      rescue => e
+        Rails.logger.warn "Hugging Face model #{model_url} failed: #{e.message}"
+        next
+      end
+    end
+    
+    nil
+  end
+
+  def call_huggingface_api(description, model_url)
+    uri = URI(model_url)
     http = Net::HTTP.new(uri.host, uri.port)
     http.use_ssl = true
     http.read_timeout = @timeout
     http.open_timeout = 30
 
     request = Net::HTTP::Post.new(uri)
-    request['Authorization'] = "Bearer #{API_KEY}"
+    request['Authorization'] = "Bearer #{HUGGINGFACE_API_KEY}"
     request['Content-Type'] = 'application/json'
-    request['User-Agent'] = 'ContractGenerator/1.0'
+    request['User-Agent'] = 'ContractGenerator/2.0'
 
-    prompt = build_contract_prompt(description)
+    prompt = build_huggingface_prompt(description)
 
-    # Request body compatible with most text generation models
     request.body = {
       inputs: prompt,
       parameters: {
-        max_length: 1500,
+        max_new_tokens: 2000,
         temperature: 0.7,
         do_sample: true,
         top_p: 0.9,
         repetition_penalty: 1.2,
+        return_full_text: false,
         num_return_sequences: 1
       },
       options: {
@@ -103,66 +249,45 @@ class AiContractGenerationService
     }.to_json
 
     response = http.request(request)
-    Rails.logger.info("HuggingFace raw response: #{response.code} | #{response.body.truncate(1000)}")
-
+    
     case response.code
     when '200'
       result = JSON.parse(response.body)
       extract_generated_content(result, prompt)
-    when '404'
-      Rails.logger.error "Model not found (404). The model may be unavailable or the URL is incorrect."
-      Rails.logger.error "Attempted URL: #{API_URL}"
-      raise "Model not found - 404 error"
     when '503'
-      Rails.logger.warn "Model is loading, retrying..."
-      sleep(10)
+      Rails.logger.warn "Model is loading, waiting..."
+      sleep(20)
       raise "Model is loading"
-    when '429'
-      Rails.logger.warn "Rate limit exceeded"
-      raise "Rate limit exceeded"
-    when '401', '403'
-      Rails.logger.error "Authentication failed. Check your API key."
-      raise "Authentication error: #{response.code}"
     else
       Rails.logger.error "Hugging Face API error: #{response.code} - #{response.body}"
       raise "API Error: #{response.code}"
     end
-  rescue JSON::ParserError => e
-    Rails.logger.error "Failed to parse JSON response: #{e.message}"
-    raise "Invalid JSON response from API"
-  rescue Net::TimeoutError => e
-    Rails.logger.error "Request timeout: #{e.message}"
-    raise "Request timeout"
-  rescue StandardError => e
-    Rails.logger.error "Unexpected error in API call: #{e.message}"
-    raise e
   end
 
-  def build_contract_prompt(description)
+  def build_huggingface_prompt(description)
     contract_type = determine_contract_type(description)
-    # Prompt optimized for conversational models like DialoGPT
+    
     <<~PROMPT
-      Human: I need help creating a professional legal contract. Here are the details:
+      Draft a comprehensive #{contract_type} for the following requirements:
 
       Description: #{description}
-      Contract Type: #{contract_type}
 
-      Please create a comprehensive contract that includes:
-      - Title and party identification
-      - Scope of work/services
-      - Payment terms
-      - Timeline and deliverables
-      - Responsibilities
+      Create a complete legal contract with:
+      - Title and parties section
+      - Detailed scope of work
+      - Terms and conditions
+      - Payment and timeline
       - Termination clauses
       - Signature section
+      - Legal disclaimers
 
-      Assistant: I'll create a professional contract for you.
+      CONTRACT:
 
       #{contract_type.upcase}
 
-      This Agreement is entered into on [DATE] between [PARTY_A] and [PARTY_B].
+      This Agreement is entered into on [DATE] between [PARTY_A] ("First Party") and [PARTY_B] ("Second Party").
 
-      WHEREAS, the parties wish to establish the terms and conditions for #{description.downcase};
+      WHEREAS, the parties desire to formalize their agreement regarding #{description.downcase};
 
       NOW, THEREFORE, the parties agree as follows:
 
@@ -172,644 +297,807 @@ class AiContractGenerationService
 
   def determine_contract_type(description)
     description_lower = description.to_s.downcase
-
-    return "Non-Disclosure Agreement"    if description_lower.include?("confidential") || description_lower.include?("nda") || description_lower.include?("non-disclosure") || description_lower.include?("secret") || description_lower.include?("sensitive") || description_lower.include?("proprietary")
-    return "Influencer Collaboration"    if description_lower.include?("influencer") || description_lower.include?("social media")
-    return "Sponsorship Agreement"       if description_lower.include?("sponsor")   || description_lower.include?("event")
-    return "Service Agreement"           if description_lower.include?("service")   || description_lower.include?("freelance")
-    return "Employment Contract"         if description_lower.include?("employ")    || description_lower.include?("job")
-    return "Gifting Agreement"           if description_lower.include?("gift")      || description_lower.include?("product")
-
-    "General Service Agreement"
+    
+    case description_lower
+    when /confidential|nda|non-disclosure|secret|sensitive|proprietary/
+      "Non-Disclosure Agreement"
+    when /influencer|social media|brand collaboration|promotion|marketing/
+      "Influencer Collaboration Agreement"
+    when /sponsor|event|partnership/
+      "Sponsorship Agreement"
+    when /service|consulting|freelance|contractor/
+      "Service Agreement"
+    when /employ|job|hiring|salary|work/
+      "Employment Contract"
+    when /gift|product|sample/
+      "Gifting Agreement"
+    when /vendor|supplier|purchase/
+      "Vendor Agreement"
+    when /license|intellectual property|software/
+      "License Agreement"
+    when /lease|rental|property/
+      "Lease Agreement"
+    when /partnership|joint venture/
+      "Partnership Agreement"
+    else
+      "General Service Agreement"
+    end
   end
 
   def extract_generated_content(result, prompt)
     generated_text = nil
 
-    # Handle different response formats from Hugging Face
     if result.is_a?(Array) && !result.empty?
-      if result.first.is_a?(Hash)
-        generated_text = result.first['generated_text'] || result.first['text']
-      elsif result.first.is_a?(String)
-        generated_text = result.first
-      end
+      generated_text = result.first.is_a?(Hash) ? 
+        (result.first['generated_text'] || result.first['text']) : 
+        result.first
     elsif result.is_a?(Hash)
       generated_text = result['generated_text'] || result['text'] || result.dig(0, 'generated_text')
-    elsif result.is_a?(String)
-      generated_text = result
     end
 
-    return nil unless generated_text
-    extract_contract_content(generated_text, prompt)
-  end
-
-  def extract_contract_content(generated_text, prompt)
-    # Remove the original prompt from the response
-    contract_content = generated_text.to_s.gsub(prompt, '').strip
-
-    # Clean up the content
-    contract_content = contract_content
-      .gsub(/\n{3,}/, "\n\n")
-      .gsub(/^\s+/, '')
-      .gsub(/\t/, '    ')
-      .gsub(/\r\n/, "\n")
-      .strip
-
-    return nil if contract_content.length < 200  # Reduced minimum length
+    return nil unless generated_text.present?
     
-    # More flexible validation
-    return nil unless contract_content.match?(/agreement|contract|terms/i)
-
-    # Add contract header if missing
-    unless contract_content.match?(/^\s*\w+\s+(AGREEMENT|CONTRACT)/i)
-      contract_content = "CONTRACT AGREEMENT\n\n" + contract_content
-    end
-
+    # Clean and format the content
+    contract_content = clean_and_format_content(generated_text)
+    return nil if contract_content.blank?
+    
     contract_content
   end
 
-  def valid_contract_content?(content)
-    return false if content.blank? || content.length < 200  # Reduced minimum length
+  def clean_and_format_content(content)
+    return nil if content.blank?
+    
+    # Remove any prompt remnants
+    content = content.to_s.strip
+    
+    # Clean up formatting
+    content = content
+      .gsub(/\r\n/, "\n")
+      .gsub(/\n{3,}/, "\n\n")
+      .gsub(/^\s+/, '')
+      .gsub(/\t/, '    ')
+      .strip
+    
+    # Ensure minimum length
+    return nil if content.length < 500
+    
+    # Basic structure validation
+    return nil unless content.match?(/agreement|contract|terms|party|parties/i)
+    
+    # Add proper contract header if missing
+    unless content.match?/^[A-Z\s]+(AGREEMENT|CONTRACT)/
+      contract_type = determine_contract_type(@description)
+      content = "#{contract_type.upcase}\n\n#{content}"
+    end
+    
+    content
+  end
 
+  def valid_contract_content?(content)
+    return false if content.blank? || content.length < 500
+
+    # Check for essential contract elements
     essential_elements = [
-      /agreement|contract|terms/i,
-      /part(y|ies)|client|service/i
+      /agreement|contract/i,
+      /part(y|ies)/i,
+      /terms|conditions/i,
+      /signature|sign/i
     ]
 
-    essential_elements.any? { |pattern| content.match?(pattern) }  # Changed from all to any
+    essential_elements.all? { |pattern| content.match?(pattern) }
   end
 
   def format_ai_contract(ai_content)
     formatted_content = ai_content.strip
 
-    unless formatted_content.include?('Signature')
-      formatted_content += "\n\n" + signature_section
+    # Ensure signature section exists
+    unless formatted_content.match?(/signature|sign.*:|witness/i)
+      formatted_content += "\n\n#{signature_section}"
     end
 
-    formatted_content += "\n\n" + generation_metadata
+    # Add metadata
+    formatted_content += "\n\n#{generation_metadata}"
+    
     formatted_content.strip
+  end
+
+  def generate_intelligent_template
+    contract_type = determine_contract_type(@description)
+    entities = extract_entities_from_description(@description)
+    
+    Rails.logger.info "Generating intelligent template for #{contract_type}"
+    
+    case contract_type.downcase
+    when /non-disclosure|nda|confidential/
+      nda_template_enhanced
+    when /influencer|social media|brand/
+      influencer_template_enhanced
+    when /sponsor|partnership/
+      sponsorship_template_enhanced
+    when /service|consulting|freelance/
+      service_template_enhanced
+    when /employment|job|hiring/
+      employment_template_enhanced
+    when /gift|product/
+      gifting_template_enhanced
+    when /vendor|supplier/
+      vendor_template_enhanced
+    else
+      general_template_enhanced
+    end
+  end
+
+  def nda_template_enhanced
+    <<~TEMPLATE
+      NON-DISCLOSURE AGREEMENT
+
+      This Non-Disclosure Agreement ("Agreement") is entered into as of [DATE] by and between:
+
+      [DISCLOSING_PARTY_NAME], a [ENTITY_TYPE] with its principal place of business at [ADDRESS] ("Disclosing Party")
+
+      AND
+
+      [RECEIVING_PARTY_NAME], a [ENTITY_TYPE] with its principal place of business at [ADDRESS] ("Receiving Party")
+
+      RECITALS
+
+      WHEREAS, the Disclosing Party possesses certain confidential and proprietary information related to #{@description};
+
+      WHEREAS, the Receiving Party desires to receive such confidential information for the purpose of [PURPOSE];
+
+      WHEREAS, the parties wish to protect the confidentiality of such information;
+
+      NOW, THEREFORE, in consideration of the mutual covenants contained herein, the parties agree as follows:
+
+      1. DEFINITION OF CONFIDENTIAL INFORMATION
+         "Confidential Information" means all non-public, proprietary, or confidential information disclosed by the Disclosing Party, including but not limited to:
+         a) Technical data, source code, algorithms, and software
+         b) Business plans, strategies, and financial information
+         c) Customer lists and supplier information
+         d) Marketing strategies and pricing information
+         e) Any information marked as "Confidential" or that would reasonably be considered confidential
+
+      2. OBLIGATIONS OF RECEIVING PARTY
+         The Receiving Party agrees to:
+         a) Hold all Confidential Information in strict confidence
+         b) Not disclose Confidential Information to third parties without written consent
+         c) Use Confidential Information solely for the agreed purpose
+         d) Take reasonable security measures to protect Confidential Information
+         e) Not reverse engineer or attempt to derive the composition of Confidential Information
+
+      3. EXCEPTIONS
+         The obligations herein shall not apply to information that:
+         a) Is or becomes publicly available through no breach of this Agreement
+         b) Was rightfully known prior to disclosure
+         c) Is rightfully received from a third party without confidentiality restrictions
+         d) Is required to be disclosed by law or court order
+
+      4. RETURN OF INFORMATION
+         Upon termination or written request, the Receiving Party shall promptly return or destroy all Confidential Information and certify such destruction in writing.
+
+      5. TERM AND TERMINATION
+         This Agreement shall remain in effect for [TERM] years from the date of execution, unless terminated earlier. The obligations of confidentiality shall survive termination for [SURVIVAL_PERIOD] years.
+
+      6. REMEDIES
+         The Receiving Party acknowledges that breach of this Agreement would cause irreparable harm, and the Disclosing Party shall be entitled to injunctive relief and monetary damages.
+
+      7. GOVERNING LAW
+         This Agreement shall be governed by the laws of [JURISDICTION] without regard to conflict of laws principles.
+
+      8. ENTIRE AGREEMENT
+         This Agreement constitutes the entire agreement between the parties and supersedes all prior negotiations and agreements relating to the subject matter hereof.
+
+      #{signature_section}
+
+      #{generation_metadata}
+    TEMPLATE
+  end
+
+  def influencer_template_enhanced
+    <<~TEMPLATE
+      INFLUENCER COLLABORATION AGREEMENT
+
+      This Influencer Collaboration Agreement ("Agreement") is entered into as of [DATE] between:
+
+      [BRAND_NAME], a [ENTITY_TYPE] with its principal place of business at [BRAND_ADDRESS] ("Brand")
+
+      AND
+
+      [INFLUENCER_NAME], an individual with principal residence at [INFLUENCER_ADDRESS] ("Influencer")
+
+      RECITALS
+
+      WHEREAS, Brand desires to engage Influencer to promote its products and services through digital content creation;
+
+      WHEREAS, Influencer has expertise in content creation and social media marketing;
+
+      WHEREAS, the parties wish to formalize their collaboration regarding #{@description};
+
+      NOW, THEREFORE, the parties agree as follows:
+
+      1. CAMPAIGN DETAILS
+         a) Campaign Description: #{@description}
+         b) Campaign Duration: [START_DATE] to [END_DATE]
+         c) Target Platforms: [SOCIAL_MEDIA_PLATFORMS]
+         d) Content Types: [CONTENT_TYPES]
+
+      2. SCOPE OF WORK
+         Influencer shall create and publish:
+         a) [NUMBER] high-quality posts featuring Brand's products
+         b) [NUMBER] stories with Brand mentions
+         c) [NUMBER] video content pieces
+         d) [OTHER_DELIVERABLES]
+
+      3. CONTENT REQUIREMENTS
+         a) All content must be original, authentic, and align with Brand's values
+         b) Content must comply with platform guidelines and applicable laws
+         c) Proper FTC disclosure hashtags must be used (#ad, #sponsored, #partnership)
+         d) Content requires Brand's pre-approval before publication
+         e) Content must meet professional quality standards
+         f) Content must be published within agreed timeframes
+
+      4. COMPENSATION
+         a) Total Fee: [CURRENCY] [AMOUNT]
+         b) Payment Schedule: [PAYMENT_TERMS]
+         c) Additional Compensation: [PRODUCTS/SERVICES]
+         d) Performance Bonuses: [BONUS_TERMS]
+         e) Expenses: [EXPENSE_TERMS]
+
+      5. INTELLECTUAL PROPERTY RIGHTS
+         a) Influencer retains ownership of original creative content
+         b) Brand receives non-exclusive, perpetual license to use content for marketing
+         c) Brand may cross-post content with proper attribution
+         d) Influencer grants Brand right to use their name and likeness in connection with campaign
+
+      6. PERFORMANCE METRICS
+         a) Minimum reach: [REACH_REQUIREMENTS]
+         b) Engagement targets: [ENGAGEMENT_TARGETS]
+         c) Reporting requirements: [REPORTING_SCHEDULE]
+
+      7. COMPLIANCE AND LEGAL
+         a) All content must comply with FTC guidelines and local advertising laws
+         b) Influencer must disclose material connections to Brand
+         c) Content must not violate any third-party rights
+         d) Both parties must comply with platform terms of service
+
+      8. EXCLUSIVITY
+         During the campaign period, Influencer shall not promote direct competitors without written consent.
+
+      9. TERMINATION
+         Either party may terminate with [NOTICE_PERIOD] days written notice. Upon termination, all committed deliverables must be completed.
+
+      10. CONFIDENTIALITY
+          Both parties agree to maintain confidentiality of proprietary information and campaign details.
+
+      11. FORCE MAJEURE
+          Neither party shall be liable for delays due to circumstances beyond reasonable control.
+
+      12. GOVERNING LAW
+          This Agreement shall be governed by the laws of [JURISDICTION].
+
+      #{signature_section}
+
+      #{generation_metadata}
+    TEMPLATE
+  end
+
+  def service_template_enhanced
+    <<~TEMPLATE
+      SERVICE AGREEMENT
+
+      This Service Agreement ("Agreement") is entered into as of [DATE] between:
+
+      [CLIENT_NAME], a [ENTITY_TYPE] with its principal place of business at [CLIENT_ADDRESS] ("Client")
+
+      AND
+
+      [SERVICE_PROVIDER_NAME], a [ENTITY_TYPE] with its principal place of business at [PROVIDER_ADDRESS] ("Service Provider")
+
+      RECITALS
+
+      WHEREAS, Client desires to engage Service Provider to provide certain services;
+
+      WHEREAS, Service Provider has the expertise and capability to provide such services;
+
+      WHEREAS, the parties wish to formalize their agreement regarding #{@description};
+
+      NOW, THEREFORE, the parties agree as follows:
+
+      1. SCOPE OF SERVICES
+         Service Provider shall provide the following services:
+         a) [DETAILED_SERVICE_DESCRIPTION]
+         b) [SPECIFIC_DELIVERABLES]
+         c) [PERFORMANCE_STANDARDS]
+         d) [QUALITY_REQUIREMENTS]
+
+      2. TERM AND TIMELINE
+         a) Service Commencement: [START_DATE]
+         b) Service Completion: [END_DATE]
+         c) Key Milestones: [MILESTONE_SCHEDULE]
+         d) Progress Reporting: [REPORTING_SCHEDULE]
+
+      3. COMPENSATION
+         a) Total Service Fee: [CURRENCY] [AMOUNT]
+         b) Payment Schedule: [PAYMENT_TERMS]
+         c) Additional Costs: [EXPENSE_TERMS]
+         d) Late Payment Penalties: [PENALTY_TERMS]
+         e) Taxes: [TAX_RESPONSIBILITIES]
+
+      4. CLIENT OBLIGATIONS
+         Client shall:
+         a) Provide necessary information, materials, and access
+         b) Provide timely feedback and approvals
+         c) Make payments according to agreed terms
+         d) Cooperate in good faith for project success
+
+      5. SERVICE PROVIDER OBLIGATIONS
+         Service Provider shall:
+         a) Perform services with professional skill and care
+         b) Meet all agreed deadlines and specifications
+         c) Maintain confidentiality of Client information
+         d) Comply with all applicable laws and regulations
+         e) Provide regular status updates
+
+      6. INTELLECTUAL PROPERTY
+         a) Work product created specifically for Client shall belong to Client
+         b) Service Provider's pre-existing IP remains with Service Provider
+         c) Client grants necessary licenses for Service Provider to perform services
+         d) Both parties warrant they have rights to use their respective IP
+
+      7. CONFIDENTIALITY
+         Both parties agree to maintain strict confidentiality of proprietary information received during the engagement.
+
+      8. WARRANTIES AND REPRESENTATIONS
+         a) Service Provider warrants services will be performed in workmanlike manner
+         b) Both parties warrant they have authority to enter this Agreement
+         c) Services will comply with applicable laws and industry standards
+
+      9. LIMITATION OF LIABILITY
+         Service Provider's liability shall be limited to the total amount paid under this Agreement.
+
+      10. TERMINATION
+          Either party may terminate with [NOTICE_PERIOD] days written notice. Client shall pay for services rendered through termination date.
+
+      11. FORCE MAJEURE
+          Neither party shall be liable for delays due to circumstances beyond reasonable control.
+
+      12. GOVERNING LAW
+          This Agreement shall be governed by the laws of [JURISDICTION].
+
+      #{signature_section}
+
+      #{generation_metadata}
+    TEMPLATE
+  end
+
+  def employment_template_enhanced
+    <<~TEMPLATE
+      EMPLOYMENT AGREEMENT
+
+      This Employment Agreement ("Agreement") is entered into as of [DATE] between:
+
+      [COMPANY_NAME], a [ENTITY_TYPE] with its principal place of business at [COMPANY_ADDRESS] ("Company")
+
+      AND
+
+      [EMPLOYEE_NAME], an individual with residence at [EMPLOYEE_ADDRESS] ("Employee")
+
+      RECITALS
+
+      WHEREAS, Company desires to employ Employee in the capacity described herein;
+
+      WHEREAS, Employee desires to accept such employment subject to the terms and conditions set forth herein;
+
+      WHEREAS, the parties wish to formalize their employment relationship regarding #{@description};
+
+      NOW, THEREFORE, the parties agree as follows:
+
+      1. EMPLOYMENT
+         a) Position: [JOB_TITLE]
+         b) Department: [DEPARTMENT]
+         c) Reporting Structure: [REPORTING_MANAGER]
+         d) Employment Type: [FULL_TIME/PART_TIME/CONTRACT]
+         e) Start Date: [START_DATE]
+
+      2. DUTIES AND RESPONSIBILITIES
+         Employee shall:
+         a) [PRIMARY_RESPONSIBILITIES]
+         b) [SECONDARY_RESPONSIBILITIES]
+         c) Perform duties in accordance with Company policies
+         d) Maintain professional conduct and standards
+         e) Participate in training and development programs
+
+      3. COMPENSATION
+         a) Base Salary: [CURRENCY] [AMOUNT] per [PERIOD]
+         b) Bonus Eligibility: [BONUS_STRUCTURE]
+         c) Benefits: [BENEFIT_PACKAGE]
+         d) Equity/Stock Options: [EQUITY_TERMS]
+         e) Performance Reviews: [REVIEW_SCHEDULE]
+
+      4. WORKING CONDITIONS
+         a) Work Schedule: [WORKING_HOURS]
+         b) Work Location: [WORK_LOCATION]
+         c) Remote Work Policy: [REMOTE_WORK_TERMS]
+         d) Vacation/PTO: [VACATION_POLICY]
+         e) Sick Leave: [SICK_LEAVE_POLICY]
+
+      5. CONFIDENTIALITY
+         Employee agrees to maintain strict confidentiality of Company's proprietary information and trade secrets.
+
+      6. INTELLECTUAL PROPERTY
+         All work product created by Employee during employment shall be the exclusive property of Company.
+
+      7. NON-COMPETITION
+         Employee agrees not to engage in competing activities during employment and for [PERIOD] after termination.
+
+      8. TERMINATION
+         a) Either party may terminate with [NOTICE_PERIOD] notice
+         b) Company may terminate immediately for cause
+         c) Employee entitled to [SEVERANCE_TERMS] upon certain terminations
+
+      9. COMPLIANCE
+         Employee shall comply with all Company policies, procedures, and applicable laws.
+
+      10. GOVERNING LAW
+          This Agreement shall be governed by the laws of [JURISDICTION].
+
+      #{signature_section}
+
+      #{generation_metadata}
+    TEMPLATE
+  end
+
+  def sponsorship_template_enhanced
+    <<~TEMPLATE
+      SPONSORSHIP AGREEMENT
+
+      This Sponsorship Agreement ("Agreement") is entered into as of [DATE] between:
+
+      [SPONSOR_NAME], a [ENTITY_TYPE] with its principal place of business at [SPONSOR_ADDRESS] ("Sponsor")
+
+      AND
+
+      [SPONSORED_PARTY_NAME], a [ENTITY_TYPE] with its principal place of business at [SPONSORED_ADDRESS] ("Sponsored Party")
+
+      RECITALS
+
+      WHEREAS, Sponsored Party is organizing/participating in [EVENT/ACTIVITY];
+
+      WHEREAS, Sponsor desires to support and gain marketing benefits from such association;
+
+      WHEREAS, the parties wish to formalize their sponsorship relationship regarding #{@description};
+
+      NOW, THEREFORE, the parties agree as follows:
+
+      1. SPONSORSHIP DETAILS
+         a) Event/Activity: [EVENT_NAME]
+         b) Date(s): [EVENT_DATES]
+         c) Location: [EVENT_LOCATION]
+         d) Sponsorship Level: [SPONSORSHIP_TIER]
+         e) Exclusive Rights: [EXCLUSIVITY_TERMS]
+
+      2. SPONSOR BENEFITS
+         Sponsor shall receive:
+         a) [NAMING_RIGHTS]
+         b) [LOGO_PLACEMENT]
+         c) [MARKETING_OPPORTUNITIES]
+         d) [HOSPITALITY_BENEFITS]
+         e) [MEDIA_COVERAGE]
+         f) [PROMOTIONAL_MATERIALS]
+
+      3. SPONSORSHIP INVESTMENT
+         a) Cash Contribution: [CURRENCY] [AMOUNT]
+         b) In-Kind Contribution: [IN_KIND_VALUE]
+         c) Payment Schedule: [PAYMENT_TERMS]
+         d) Additional Costs: [ADDITIONAL_EXPENSES]
+
+      4. SPONSORED PARTY OBLIGATIONS
+         Sponsored Party shall:
+         a) Provide agreed marketing benefits to Sponsor
+         b) Use sponsor materials according to brand guidelines
+         c) Maintain professional standards during event
+         d) Provide post-event reporting and metrics
+         e) Acknowledge Sponsor in all appropriate communications
+
+      5. MARKETING AND PROMOTION
+         a) Both parties may promote the partnership
+         b) All marketing materials require mutual approval
+         c) Sponsor logo usage guidelines must be followed
+         d) Social media promotion requirements: [SOCIAL_MEDIA_TERMS]
+
+      6. INTELLECTUAL PROPERTY
+         a) Each party retains ownership of their respective trademarks
+         b) Limited license granted for promotional purposes
+         c) No rights granted beyond scope of this Agreement
+
+      7. FORCE MAJEURE
+         If event is cancelled due to circumstances beyond control, parties will negotiate alternative arrangements.
+
+      8. TERMINATION
+         Either party may terminate with [NOTICE_PERIOD] days written notice.
+
+      9. GOVERNING LAW
+         This Agreement shall be governed by the laws of [JURISDICTION].
+
+      #{signature_section}
+
+      #{generation_metadata}
+    TEMPLATE
+  end
+
+  def gifting_template_enhanced
+    <<~TEMPLATE
+      GIFTING AGREEMENT
+
+      This Gifting Agreement ("Agreement") is entered into as of [DATE] between:
+
+      [GIFTING_PARTY_NAME], a [ENTITY_TYPE] with its principal place of business at [GIFTING_ADDRESS] ("Gifting Party")
+
+      AND
+
+      [RECIPIENT_NAME], an individual/entity with address at [RECIPIENT_ADDRESS] ("Recipient")
+
+      RECITALS
+
+      WHEREAS, Gifting Party desires to provide certain products or services to Recipient;
+
+      WHEREAS, Recipient agrees to receive such gifts subject to the terms herein;
+
+      WHEREAS, the parties wish to formalize their gifting arrangement regarding #{@description};
+
+      NOW, THEREFORE, the parties agree as follows:
+
+      1. GIFT DETAILS
+         a) Products/Services: [GIFT_DESCRIPTION]
+         b) Estimated Value: [CURRENCY] [VALUE]
+         c) Delivery Terms: [DELIVERY_SCHEDULE]
+         d) Shipping/Handling: [SHIPPING_TERMS]
+
+      2. RECIPIENT OBLIGATIONS
+         Recipient agrees to:
+         a) [USAGE_REQUIREMENTS]
+         b) [SOCIAL_MEDIA_OBLIGATIONS]
+         c) [FEEDBACK_REQUIREMENTS]
+         d) [COMPLIANCE_OBLIGATIONS]
+
+      3. DISCLOSURE REQUIREMENTS
+         a) Recipient must disclose gift relationship in content
+         b) Appropriate hashtags must be used (#gift, #gifted, #pr)
+         c) Compliance with FTC guidelines and local laws
+         d) Honest and authentic representation of products
+
+      4. CONTENT CREATION
+         a) Content Requirements: [CONTENT_SPECIFICATIONS]
+         b) Posting Schedule: [POSTING_TIMELINE]
+         c) Approval Process: [APPROVAL_REQUIREMENTS]
+         d) Usage Rights: [CONTENT_USAGE_RIGHTS]
+
+      5. INTELLECTUAL PROPERTY
+         a) Recipient retains ownership of original content
+         b) Gifting Party receives license to use content for marketing
+         c) Brand trademark usage guidelines apply
+
+      6. NO GUARANTEED PROMOTION
+         This is a gift with no guarantee of promotion or endorsement.
+
+      7. TERMINATION
+         Either party may terminate this arrangement with written notice.
+
+      8. GOVERNING LAW
+         This Agreement shall be governed by the laws of [JURISDICTION].
+
+      #{signature_section}
+
+      #{generation_metadata}
+    TEMPLATE
+  end
+
+  def vendor_template_enhanced
+    <<~TEMPLATE
+      VENDOR AGREEMENT
+
+      This Vendor Agreement ("Agreement") is entered into as of [DATE] between:
+
+      [BUYER_NAME], a [ENTITY_TYPE] with its principal place of business at [BUYER_ADDRESS] ("Buyer")
+
+      AND
+
+      [VENDOR_NAME], a [ENTITY_TYPE] with its principal place of business at [VENDOR_ADDRESS] ("Vendor")
+
+      RECITALS
+
+      WHEREAS, Buyer desires to purchase certain goods/services from Vendor;
+
+      WHEREAS, Vendor agrees to supply such goods/services subject to the terms herein;
+
+      WHEREAS, the parties wish to formalize their commercial relationship regarding #{@description};
+
+      NOW, THEREFORE, the parties agree as follows:
+
+      1. SCOPE OF SUPPLY
+         Vendor shall supply:
+         a) [PRODUCTS/SERVICES_DESCRIPTION]
+         b) [SPECIFICATIONS]
+         c) [QUALITY_STANDARDS]
+         d) [DELIVERY_REQUIREMENTS]
+
+      2. PRICING AND PAYMENT
+         a) Pricing: [PRICING_STRUCTURE]
+         b) Payment Terms: [PAYMENT_SCHEDULE]
+         c) Currency: [CURRENCY]
+         d) Late Payment Charges: [LATE_FEES]
+         e) Taxes: [TAX_RESPONSIBILITIES]
+
+      3. DELIVERY TERMS
+         a) Delivery Schedule: [DELIVERY_TIMELINE]
+         b) Delivery Location: [DELIVERY_ADDRESS]
+         c) Shipping Terms: [INCOTERMS]
+         d) Risk of Loss: [RISK_ALLOCATION]
+
+      4. QUALITY ASSURANCE
+         a) All products must meet specified quality standards
+         b) Inspection and acceptance procedures
+         c) Warranty terms: [WARRANTY_PERIOD]
+         d) Return/replacement policy
+
+      5. VENDOR OBLIGATIONS
+         Vendor shall:
+         a) Maintain appropriate insurance coverage
+         b) Comply with all applicable laws and regulations
+         c) Maintain quality certifications as required
+         d) Provide timely delivery and communication
+
+      6. BUYER OBLIGATIONS
+         Buyer shall:
+         a) Provide accurate specifications and requirements
+         b) Make payments according to agreed terms
+         c) Provide reasonable access for delivery
+         d) Inspect goods upon receipt
+
+      7. INTELLECTUAL PROPERTY
+         Both parties warrant they have rights to use their respective IP in connection with this Agreement.
+
+      8. CONFIDENTIALITY
+         Both parties agree to maintain confidentiality of proprietary information.
+
+      9. TERMINATION
+         Either party may terminate with [NOTICE_PERIOD] days written notice.
+
+      10. GOVERNING LAW
+          This Agreement shall be governed by the laws of [JURISDICTION].
+
+      #{signature_section}
+
+      #{generation_metadata}
+    TEMPLATE
+  end
+
+  def general_template_enhanced
+    <<~TEMPLATE
+      GENERAL AGREEMENT
+
+      This Agreement ("Agreement") is entered into as of [DATE] between:
+
+      [PARTY_A_NAME], a [ENTITY_TYPE] with its principal place of business at [PARTY_A_ADDRESS] ("Party A")
+
+      AND
+
+      [PARTY_B_NAME], a [ENTITY_TYPE] with its principal place of business at [PARTY_B_ADDRESS] ("Party B")
+
+      RECITALS
+
+      WHEREAS, the parties desire to enter into an agreement regarding #{@description};
+
+      WHEREAS, both parties have the authority and capacity to enter into this Agreement;
+
+      NOW, THEREFORE, the parties agree as follows:
+
+      1. SCOPE AND PURPOSE
+         This Agreement governs the relationship between the parties regarding [AGREEMENT_PURPOSE].
+
+      2. TERMS AND CONDITIONS
+         a) [SPECIFIC_TERMS]
+         b) [OBLIGATIONS_PARTY_A]
+         c) [OBLIGATIONS_PARTY_B]
+         d) [PERFORMANCE_STANDARDS]
+
+      3. CONSIDERATION
+         a) Compensation/Exchange: [CONSIDERATION_TERMS]
+         b) Payment Schedule: [PAYMENT_TERMS]
+         c) Additional Costs: [EXPENSE_ALLOCATION]
+
+      4. TERM AND TERMINATION
+         a) Term: [AGREEMENT_DURATION]
+         b) Termination: [TERMINATION_CONDITIONS]
+         c) Post-termination obligations: [POST_TERMINATION_TERMS]
+
+      5. INTELLECTUAL PROPERTY
+         [INTELLECTUAL_PROPERTY_TERMS]
+
+      6. CONFIDENTIALITY
+         Both parties agree to maintain confidentiality of proprietary information.
+
+      7. WARRANTIES AND REPRESENTATIONS
+         Each party warrants they have authority to enter this Agreement.
+
+      8. LIMITATION OF LIABILITY
+         [LIABILITY_LIMITATION_TERMS]
+
+      9. FORCE MAJEURE
+         Neither party shall be liable for delays due to circumstances beyond reasonable control.
+
+      10. GOVERNING LAW
+          This Agreement shall be governed by the laws of [JURISDICTION].
+
+      #{signature_section}
+
+      #{generation_metadata}
+    TEMPLATE
   end
 
   def signature_section
     <<~SIGNATURE
-      IN WITNESS WHEREOF, the parties hereto have executed this Agreement as of the date first written above.
+      SIGNATURE SECTION
 
-      PARTY A:                               PARTY B:
+      IN WITNESS WHEREOF, the parties have executed this Agreement as of the date first written above.
 
-      _____________________                  _____________________
-      Signature                             Signature
+      PARTY A:                                    PARTY B:
 
-      _____________________                  _____________________
-      Name: [PARTY_A_NAME]                  Name: [PARTY_B_NAME]
+      ________________________________           ________________________________
+      Signature                                  Signature
 
-      _____________________                  _____________________
-      Designation: [TITLE]                  Designation: [TITLE]
+      ________________________________           ________________________________
+      Print Name: [PARTY_A_SIGNATORY]           Print Name: [PARTY_B_SIGNATORY]
 
-      _____________________                  _____________________
-      Date: [DATE]                          Date: [DATE]
+      ________________________________           ________________________________
+      Title: [PARTY_A_TITLE]                    Title: [PARTY_B_TITLE]
+
+      ________________________________           ________________________________
+      Date: [DATE]                              Date: [DATE]
 
       WITNESSES:
 
-      1. _____________________              2. _____________________
-         Signature                             Signature
-         Name: [WITNESS_1_NAME]                Name: [WITNESS_2_NAME]
-         Address: [WITNESS_1_ADDRESS]          Address: [WITNESS_2_ADDRESS]
+      Witness 1:                                 Witness 2:
+
+      ________________________________           ________________________________
+      Signature                                  Signature
+
+      ________________________________           ________________________________
+      Print Name: [WITNESS_1_NAME]              Print Name: [WITNESS_2_NAME]
+
+      ________________________________           ________________________________
+      Address: [WITNESS_1_ADDRESS]              Address: [WITNESS_2_ADDRESS]
+
+      ________________________________           ________________________________
+      Date: [DATE]                              Date: [DATE]
     SIGNATURE
   end
 
   def generation_metadata
     <<~METADATA
-      ---
-      Document Generation Details:
-      - Generated on: #{Time.current.strftime('%d/%m/%Y at %H:%M:%S')}
-      - Generation method: AI-assisted template
-      - Based on description: #{@description.to_s.truncate(100)}
-      - Jurisdiction: As per Indian law and practice
-      - Legal Notice: This is a draft agreement and must be reviewed by qualified legal counsel before execution
-      - Stamp Duty: Please ensure appropriate stamp duty is paid as per applicable state laws
+      ═══════════════════════════════════════════════════════════════════════════════════════
+      CONTRACT GENERATION INFORMATION
+      ═══════════════════════════════════════════════════════════════════════════════════════
+      Generated: #{Time.current.strftime('%B %d, %Y at %I:%M %p %Z')}
+      Method: AI-Powered Contract Generation
+      Description: #{@description.to_s.truncate(200)}
+      Contract Type: #{determine_contract_type(@description)}
+      
+      IMPORTANT LEGAL NOTICES:
+      ═══════════════════════════════════════════════════════════════════════════════════════
+      ⚠️  DRAFT DOCUMENT: This contract is a draft and must be reviewed by qualified legal counsel
+      ⚠️  CUSTOMIZATION REQUIRED: All placeholder values [IN BRACKETS] must be completed
+      ⚠️  JURISDICTION: Ensure governing law clause matches your jurisdiction
+      ⚠️  COMPLIANCE: Verify compliance with local laws and regulations
+      ⚠️  PROFESSIONAL REVIEW: Seek professional legal advice before execution
+      
+      DISCLAIMER:
+      This contract was generated by AI and is provided for informational purposes only. 
+      It does not constitute legal advice and should not be used without proper legal review.
+      The accuracy and completeness of this document is not guaranteed.
+      
+      For legal advice, consult with a qualified attorney in your jurisdiction.
+      ═══════════════════════════════════════════════════════════════════════════════════════
     METADATA
-  end
-
-  def generate_contract_template
-    contract_type = determine_contract_type(@description)
-
-    template_content = case contract_type.downcase
-    when /non-disclosure|nda|confidential/
-      nda_template_indian
-    when /influencer/
-      influencer_template_indian
-    when /sponsor/
-      sponsorship_template_indian
-    when /service/
-      service_template_indian
-    when /employment/
-      employment_template_indian
-    when /gift/
-      gifting_template_indian
-    else
-      general_template_indian
-    end
-
-    template_content + "\n\n" + signature_section + "\n\n" + generation_metadata
-  end
-
-  def nda_template_indian
-    <<~TEMPLATE
-      NON-DISCLOSURE AGREEMENT
-
-      THIS AGREEMENT is made on this #{Date.current.strftime('%d')} day of #{Date.current.strftime('%B')}, #{Date.current.year} between:
-
-      [DISCLOSING_PARTY_NAME], a company incorporated under the Companies Act, 2013 having its registered office at [DISCLOSING_PARTY_ADDRESS] (hereinafter referred to as "Disclosing Party", which expression shall, unless repugnant to the context, include its successors and permitted assigns) of the FIRST PART;
-
-      AND
-
-      [RECEIVING_PARTY_NAME], a company incorporated under the Companies Act, 2013 having its registered office at [RECEIVING_PARTY_ADDRESS] (hereinafter referred to as "Receiving Party", which expression shall, unless repugnant to the context, include its successors and permitted assigns) of the SECOND PART.
-
-      WHEREAS the Disclosing Party desires to disclose certain confidential information relating to #{@description} to the Receiving Party for the purpose of [PURPOSE_OF_DISCLOSURE];
-
-      WHEREAS the Receiving Party is willing to receive such confidential information subject to the terms and conditions set forth herein;
-
-      NOW THEREFORE, in consideration of the mutual covenants and agreements contained herein, the parties agree as follows:
-
-      1. DEFINITION OF CONFIDENTIAL INFORMATION
-         1.1 "Confidential Information" shall mean and include all information, data, materials, and know-how disclosed by the Disclosing Party to the Receiving Party, whether orally, in writing, or in any other form, including but not limited to:
-             (a) Technical data, formulae, patterns, compilations, programs, devices, methods, techniques, drawings, processes, financial data, financial plans, product plans, or list of actual or potential customers or suppliers;
-             (b) Business strategies, marketing plans, pricing information, and commercial information;
-             (c) Any information marked as "Confidential" or "Proprietary" or which would reasonably be considered confidential under the circumstances.
-
-      2. NON-DISCLOSURE OBLIGATIONS
-         2.1 The Receiving Party undertakes and agrees:
-             (a) To maintain the confidentiality of all Confidential Information received from the Disclosing Party;
-             (b) Not to disclose, reveal, or make available the Confidential Information to any third party without the prior written consent of the Disclosing Party;
-             (c) To use the Confidential Information solely for the purpose for which it was disclosed;
-             (d) To take reasonable measures to protect the confidentiality of the Confidential Information, which shall be no less than the measures it takes to protect its own confidential information.
-
-      3. EXCEPTIONS
-         3.1 The obligations under this Agreement shall not apply to information that:
-             (a) Is or becomes publicly available through no breach of this Agreement by the Receiving Party;
-             (b) Was rightfully known to the Receiving Party prior to disclosure by the Disclosing Party;
-             (c) Is rightfully received by the Receiving Party from a third party without breach of any confidentiality obligation;
-             (d) Is required to be disclosed by law or court order, provided that the Receiving Party gives the Disclosing Party reasonable prior notice.
-
-      4. RETURN OF CONFIDENTIAL INFORMATION
-         4.1 Upon termination of this Agreement or upon written request by the Disclosing Party, the Receiving Party shall promptly return or destroy all documents, materials, and other tangible manifestations of Confidential Information.
-
-      5. TERM AND TERMINATION
-         5.1 This Agreement shall commence on the date first written above and shall continue for a period of [DURATION] years, unless terminated earlier in accordance with the provisions hereof.
-         5.2 The obligations of confidentiality shall survive the termination of this Agreement and shall continue for a period of [SURVIVAL_PERIOD] years from the date of termination.
-
-      6. REMEDIES
-         6.1 The Receiving Party acknowledges that any breach of this Agreement may cause irreparable harm to the Disclosing Party for which monetary damages would be inadequate, and therefore the Disclosing Party shall be entitled to seek injunctive relief and specific performance.
-
-      7. GOVERNING LAW AND JURISDICTION
-         7.1 This Agreement shall be governed by and construed in accordance with the laws of India.
-         7.2 Any disputes arising out of or in connection with this Agreement shall be subject to the exclusive jurisdiction of the courts in [JURISDICTION_CITY].
-
-      8. ENTIRE AGREEMENT
-         8.1 This Agreement constitutes the entire agreement between the parties and supersedes all prior negotiations, representations, or agreements relating to the subject matter hereof.
-
-      9. AMENDMENT
-         9.1 This Agreement may only be amended or modified by a written instrument signed by both parties.
-
-      10. SEVERABILITY
-          10.1 If any provision of this Agreement is held to be invalid or unenforceable, the remaining provisions shall continue in full force and effect.
-    TEMPLATE
-  end
-
-  def influencer_template_indian
-    <<~TEMPLATE
-      INFLUENCER COLLABORATION AGREEMENT
-
-      THIS AGREEMENT is made on this #{Date.current.strftime('%d')} day of #{Date.current.strftime('%B')}, #{Date.current.year} between:
-
-      [BRAND_NAME], a company incorporated under the Companies Act, 2013 having its registered office at [BRAND_ADDRESS] (hereinafter referred to as "Brand", which expression shall, unless repugnant to the context, include its successors and permitted assigns) of the FIRST PART;
-
-      AND
-
-      [INFLUENCER_NAME], an individual residing at [INFLUENCER_ADDRESS] (hereinafter referred to as "Influencer") of the SECOND PART.
-
-      WHEREAS the Brand desires to engage the Influencer for promoting its products/services through digital content creation;
-
-      WHEREAS the Influencer agrees to create and publish content in accordance with the terms and conditions set forth herein;
-
-      NOW THEREFORE, in consideration of the mutual covenants contained herein, the parties agree as follows:
-
-      1. CAMPAIGN DETAILS
-         1.1 Campaign Description: #{@description}
-         1.2 Campaign Duration: From [START_DATE] to [END_DATE]
-         1.3 Platform(s): [SOCIAL_MEDIA_PLATFORMS]
-
-      2. SCOPE OF WORK
-         2.1 The Influencer shall create and publish the following content:
-             (a) [NUMBER] Instagram posts featuring Brand's products
-             (b) [NUMBER] Instagram stories
-             (c) [OTHER_DELIVERABLES]
-
-      3. CONTENT GUIDELINES
-         3.1 All content shall be original, authentic, and align with Brand's values
-         3.2 Content must comply with platform guidelines and applicable laws
-         3.3 Proper disclosure hashtags must be used (#ad, #sponsored, #partnership) as per ASCI guidelines
-         3.4 Content must be approved by Brand before publication
-
-      4. COMPENSATION
-         4.1 Total Compensation: ₹[AMOUNT] (Rupees [AMOUNT_IN_WORDS])
-         4.2 Payment Terms: [PAYMENT_SCHEDULE]
-         4.3 TDS shall be deducted as per applicable tax laws
-         4.4 Additional Benefits: [PRODUCTS/SERVICES_IF_ANY]
-
-      5. INTELLECTUAL PROPERTY RIGHTS
-         5.1 The Influencer retains copyright in the original content created
-         5.2 The Brand is granted a non-exclusive, perpetual license to use the content for marketing purposes
-         5.3 The Brand may cross-post content on its official channels with proper attribution
-
-      6. COMPLIANCE WITH LAWS
-         6.1 Both parties shall comply with all applicable laws including but not limited to:
-             (a) Advertising Standards Council of India (ASCI) Guidelines
-             (b) Information Technology Act, 2000
-             (c) Consumer Protection Act, 2019
-             (d) Goods and Services Tax Act, 2017
-
-      7. TERMINATION
-         7.1 Either party may terminate this Agreement with [NOTICE_PERIOD] days written notice
-         7.2 Upon termination, the Influencer shall complete all committed deliverables
-
-      8. GOVERNING LAW
-         8.1 This Agreement shall be governed by Indian law
-         8.2 Disputes shall be subject to the jurisdiction of courts in [CITY]
-
-      9. FORCE MAJEURE
-         9.1 Neither party shall be liable for delays due to circumstances beyond reasonable control
-    TEMPLATE
-  end
-
-  def service_template_indian
-    <<~TEMPLATE
-      SERVICE AGREEMENT
-
-      THIS AGREEMENT is made on this #{Date.current.strftime('%d')} day of #{Date.current.strftime('%B')}, #{Date.current.year} between:
-
-      [CLIENT_NAME], a company incorporated under the Companies Act, 2013 having its registered office at [CLIENT_ADDRESS] (hereinafter referred to as "Client", which expression shall, unless repugnant to the context, include its successors and permitted assigns) of the FIRST PART;
-
-      AND
-
-      [SERVICE_PROVIDER_NAME], a company incorporated under the Companies Act, 2013 having its registered office at [SERVICE_PROVIDER_ADDRESS] (hereinafter referred to as "Service Provider", which expression shall, unless repugnant to the context, include its successors and permitted assigns) of the SECOND PART.
-
-      WHEREAS the Client desires to engage the Service Provider for #{@description};
-
-      WHEREAS the Service Provider agrees to provide such services subject to the terms and conditions herein;
-
-      NOW THEREFORE, in consideration of the mutual covenants contained herein, the parties agree as follows:
-
-      1. SCOPE OF SERVICES
-         1.1 The Service Provider shall provide the following services:
-             (a) [DETAILED_SERVICE_DESCRIPTION]
-             (b) [SPECIFIC_DELIVERABLES]
-             (c) [PERFORMANCE_STANDARDS]
-
-      2. TERM AND TIMELINE
-         2.1 Commencement Date: [START_DATE]
-         2.2 Completion Date: [END_DATE]
-         2.3 Key Milestones: [MILESTONE_DETAILS]
-
-      3. CONSIDERATION AND PAYMENT
-         3.1 Total Service Fee: ₹[AMOUNT] (Rupees [AMOUNT_IN_WORDS]) plus applicable taxes
-         3.2 Payment Schedule: [PAYMENT_TERMS]
-         3.3 GST shall be charged as per applicable rates
-         3.4 TDS shall be deducted as per Income Tax Act, 1961
-
-      4. OBLIGATIONS OF THE CLIENT
-         4.1 Provide necessary information, materials, and access
-         4.2 Timely approval and feedback
-         4.3 Payment as per agreed terms
-         4.4 Cooperation for smooth execution of services
-
-      5. OBLIGATIONS OF THE SERVICE PROVIDER
-         5.1 Perform services with due care and diligence
-         5.2 Maintain confidentiality of Client's information
-         5.3 Comply with all applicable laws and regulations
-         5.4 Deliver services as per agreed specifications and timeline
-
-      6. INTELLECTUAL PROPERTY
-         6.1 All work product developed specifically for the Client shall belong to the Client
-         6.2 Service Provider's pre-existing intellectual property shall remain with the Service Provider
-         6.3 Client grants necessary licenses for Service Provider to perform the services
-
-      7. CONFIDENTIALITY
-         7.1 Both parties shall maintain confidentiality of each other's proprietary information
-         7.2 Confidentiality obligations shall survive termination of this Agreement
-
-      8. LIMITATION OF LIABILITY
-         8.1 Service Provider's total liability shall not exceed the total fees paid under this Agreement
-         8.2 Neither party shall be liable for indirect, consequential, or special damages
-
-      9. TERMINATION
-         9.1 Either party may terminate with [NOTICE_PERIOD] days written notice
-         9.2 Immediate termination allowed for material breach not cured within [CURE_PERIOD] days
-         9.3 Upon termination, Service Provider shall deliver all work completed
-
-      10. DISPUTE RESOLUTION
-          10.1 Disputes shall first be resolved through mutual consultation
-          10.2 Unresolved disputes shall be referred to arbitration under Arbitration and Conciliation Act, 2015
-          10.3 Seat of arbitration shall be [ARBITRATION_SEAT]
-
-      11. GOVERNING LAW
-          11.1 This Agreement shall be governed by Indian law
-          11.2 Courts in [JURISDICTION] shall have exclusive jurisdiction
-    TEMPLATE
-  end
-
-  def employment_template_indian
-    <<~TEMPLATE
-      EMPLOYMENT AGREEMENT
-
-      THIS AGREEMENT is made on this #{Date.current.strftime('%d')} day of #{Date.current.strftime('%B')}, #{Date.current.year} between:
-
-      [COMPANY_NAME], a company incorporated under the Companies Act, 2013 having its registered office at [COMPANY_ADDRESS] (hereinafter referred to as "Company", which expression shall, unless repugnant to the context, include its successors and permitted assigns) of the FIRST PART;
-
-      AND
-
-      [EMPLOYEE_NAME], an individual residing at [EMPLOYEE_ADDRESS] (hereinafter referred to as "Employee") of the SECOND PART.
-
-      WHEREAS the Company desires to employ the Employee in the capacity of #{@description};
-
-      WHEREAS the Employee agrees to serve the Company subject to the terms and conditions herein;
-
-      NOW THEREFORE, the parties agree as follows:
-
-      1. EMPLOYMENT TERMS
-         1.1 Position: [JOB_TITLE]
-         1.2 Department: [DEPARTMENT]
-         1.3 Reporting Manager: [MANAGER_NAME]
-         1.4 Date of Joining: [START_DATE]
-         1.5 Place of Work: [WORK_LOCATION]
-
-      2. COMPENSATION AND BENEFITS
-         2.1 Monthly Salary: ₹[MONTHLY_SALARY] (Rupees [AMOUNT_IN_WORDS])
-         2.2 Annual CTC: ₹[ANNUAL_CTC] (Rupees [AMOUNT_IN_WORDS])
-         2.3 Salary Components: [BREAK_UP_DETAILS]
-         2.4 Benefits: [BENEFITS_DETAILS]
-         2.5 Performance Bonus: [BONUS_STRUCTURE]
-
-      3. DUTIES AND RESPONSIBILITIES
-         3.1 The Employee shall perform duties as assigned by the Company
-         3.2 Employee shall devote full time and attention to Company's business
-         3.3 Employee shall maintain highest standards of conduct and professionalism
-         3.4 Employee shall comply with all Company policies and procedures
-
-      4. WORKING HOURS AND LEAVE
-         4.1 Working Hours: [HOURS_PER_WEEK] hours per week
-         4.2 Working Days: [WORKING_DAYS]
-         4.3 Leave Entitlement as per Company policy and applicable laws
-         4.4 Overtime compensation as per applicable laws
-
-      5. CONFIDENTIALITY AND NON-DISCLOSURE
-         5.1 Employee shall maintain strict confidentiality of Company's proprietary information
-         5.2 Employee shall not disclose confidential information to third parties
-         5.3 These obligations shall survive termination of employment
-
-      6. NON-COMPETE AND NON-SOLICITATION
-         6.1 During employment and for [RESTRICTION_PERIOD] after termination, Employee shall not:
-             (a) Engage in competing business within [GEOGRAPHICAL_AREA]
-             (b) Solicit Company's clients or employees
-             (c) Use Company's confidential information for personal benefit
-
-      7. INTELLECTUAL PROPERTY
-         7.1 All intellectual property created during employment shall belong to the Company
-         7.2 Employee shall execute necessary documents to assign such rights to the Company
-
-      8. TERMINATION
-         8.1 Company may terminate employment with [NOTICE_PERIOD] months notice or payment in lieu
-         8.2 Employee may resign with [EMPLOYEE_NOTICE_PERIOD] months notice
-         8.3 Company may terminate immediately for cause without notice or payment
-         8.4 Upon termination, Employee shall return all Company property
-
-      9. STATUTORY COMPLIANCE
-         9.1 This Agreement is subject to applicable labor laws including:
-             (a) Industrial Employment (Standing Orders) Act, 1946
-             (b) Employees' Provident Fund and Miscellaneous Provisions Act, 1952
-             (c) Employees' State Insurance Act, 1948
-             (d) Payment of Wages Act, 1936
-             (e) Payment of Gratuity Act, 1972
-
-      10. GOVERNING LAW
-          10.1 This Agreement shall be governed by Indian law
-          10.2 Disputes shall be subject to jurisdiction of courts in [CITY]
-    TEMPLATE
-  end
-
-  def sponsorship_template_indian
-    <<~TEMPLATE
-      SPONSORSHIP AGREEMENT
-
-      THIS AGREEMENT is made on this #{Date.current.strftime('%d')} day of #{Date.current.strftime('%B')}, #{Date.current.year} between:
-
-      [SPONSOR_NAME], a company incorporated under the Companies Act, 2013 having its registered office at [SPONSOR_ADDRESS] (hereinafter referred to as "Sponsor", which expression shall, unless repugnant to the context, include its successors and permitted assigns) of the FIRST PART;
-
-      AND
-
-      [ORGANIZER_NAME], a company incorporated under the Companies Act, 2013 having its registered office at [ORGANIZER_ADDRESS] (hereinafter referred to as "Organizer", which expression shall, unless repugnant to the context, include its successors and permitted assigns) of the SECOND PART.
-
-      WHEREAS the Organizer is organizing #{@description};
-
-      WHEREAS the Sponsor desires to sponsor the said event subject to the terms herein;
-
-      NOW THEREFORE, the parties agree as follows:
-
-      1. EVENT DETAILS
-         1.1 Event Name: [EVENT_NAME]
-         1.2 Event Date(s): [EVENT_DATES]
-         1.3 Event Venue: [VENUE_DETAILS]
-         1.4 Expected Attendance: [ATTENDEE_COUNT]
-
-      2. SPONSORSHIP AMOUNT
-         2.1 Sponsorship Fee: ₹[AMOUNT] (Rupees [AMOUNT_IN_WORDS])
-         2.2 Payment Schedule: [PAYMENT_TERMS]
-         2.3 GST shall be charged as applicable
-         2.4 TDS shall be deducted as per Income Tax Act, 1961
-
-      3. SPONSOR BENEFITS
-         3.1 Logo placement on event materials and promotional content
-         3.2 [NUMBER] complimentary passes/tickets
-         3.3 Booth space of [DIMENSIONS] at the venue
-         3.4 Speaking opportunity for [DURATION] minutes
-         3.5 Digital marketing promotion on official channels
-         3.6 [OTHER_SPECIFIC_BENEFITS]
-
-      4. ORGANIZER OBLIGATIONS
-         4.1 Provide promised benefits as per agreed specifications
-         4.2 Ensure professional conduct of the event
-         4.3 Provide post-event report with attendance and engagement metrics
-         4.4 Maintain quality standards for the event
-
-      5. SPONSOR OBLIGATIONS
-         5.1 Provide logo and marketing materials as per specifications
-         5.2 Ensure content is appropriate and complies with applicable laws
-         5.3 Make payments as per agreed schedule
-         5.4 Coordinate with Organizer for smooth execution
-
-      6. INTELLECTUAL PROPERTY
-         6.1 Each party retains ownership of their respective intellectual property
-         6.2 Limited license granted for use during the event period
-         6.3 Prior approval required for any additional usage
-
-      7. CANCELLATION AND FORCE MAJEURE
-         7.1 Event cancellation by Organizer: [REFUND_TERMS]
-         7.2 Sponsor withdrawal: [PENALTY_TERMS]
-         7.3 Force Majeure events: [FORCE_MAJEURE_CLAUSE]
-
-      8. LIABILITY AND INDEMNIFICATION
-         8.1 Each party shall indemnify the other against third-party claims
-         8.2 Organizer shall maintain adequate insurance coverage
-         8.3 Limitation of liability as per applicable laws
-
-      9. GOVERNING LAW
-         9.1 This Agreement shall be governed by Indian law
-         9.2 Disputes shall be subject to jurisdiction of courts in [CITY]
-    TEMPLATE
-  end
-
-  def gifting_template_indian
-    <<~TEMPLATE
-      PRODUCT GIFTING AGREEMENT
-
-      THIS AGREEMENT is made on this #{Date.current.strftime('%d')} day of #{Date.current.strftime('%B')}, #{Date.current.year} between:
-
-      [BRAND_NAME], a company incorporated under the Companies Act, 2013 having its registered office at [BRAND_ADDRESS] (hereinafter referred to as "Brand", which expression shall, unless repugnant to the context, include its successors and permitted assigns) of the FIRST PART;
-
-      AND
-
-      [RECIPIENT_NAME], an individual residing at [RECIPIENT_ADDRESS] (hereinafter referred to as "Recipient") of the SECOND PART.
-
-      WHEREAS the Brand desires to provide certain products to the Recipient for #{@description};
-
-      WHEREAS the Recipient agrees to receive such products subject to the terms herein;
-
-      NOW THEREFORE, the parties agree as follows:
-
-      1. GIFTED PRODUCTS
-         1.1 Products: [PRODUCT_DETAILS]
-         1.2 Estimated Value: ₹[VALUE] (Rupees [VALUE_IN_WORDS])
-         1.3 Delivery Method: [DELIVERY_DETAILS]
-         1.4 Delivery Timeline: [DELIVERY_DATE]
-
-      2. RECIPIENT OBLIGATIONS
-         2.1 Create authentic content featuring the products
-         2.2 Minimum [NUMBER] social media posts within [TIMEFRAME]
-         2.3 Include proper disclosure as per ASCI guidelines (#gifted, #pr, #collaboration)
-         2.4 Tag Brand's official social media handles
-
-      3. CONTENT GUIDELINES
-         3.1 Content must be original and authentic
-         3.2 Comply with platform terms and applicable laws
-         3.3 Maintain professional standards
-         3.4 No guarantee of positive reviews required
-
-      4. INTELLECTUAL PROPERTY
-         4.1 Recipient retains ownership of created content
-         4.2 Brand may repost with proper attribution
-         4.3 No exclusive rights granted to Brand
-
-      5. TAX IMPLICATIONS
-         5.1 Recipient acknowledges tax liability on gifted products as per Income Tax Act, 1961
-         5.2 Brand may issue necessary certificates for tax compliance
-
-      6. COMPLIANCE
-         6.1 Both parties shall comply with:
-             (a) ASCI Guidelines for Influencer Advertising
-             (b) Information Technology Act, 2000
-             (c) Consumer Protection Act, 2019
-
-      7. TERMINATION
-         7.1 Either party may terminate with written notice
-         7.2 Completed obligations shall remain valid
-
-      8. GOVERNING LAW
-         8.1 This Agreement shall be governed by Indian law
-         8.2 Disputes subject to jurisdiction of courts in [CITY]
-    TEMPLATE
-  end
-
-  def general_template_indian
-    <<~TEMPLATE
-      GENERAL AGREEMENT
-
-      THIS AGREEMENT is made on this #{Date.current.strftime('%d')} day of #{Date.current.strftime('%B')}, #{Date.current.year} between:
-
-      [PARTY_A_NAME], a company incorporated under the Companies Act, 2013 having its registered office at [PARTY_A_ADDRESS] (hereinafter referred to as "Party A", which expression shall, unless repugnant to the context, include its successors and permitted assigns) of the FIRST PART;
-
-      AND
-
-      [PARTY_B_NAME], a company incorporated under the Companies Act, 2013 having its registered office at [PARTY_B_ADDRESS] (hereinafter referred to as "Party B", which expression shall, unless repugnant to the context, include its successors and permitted assigns) of the SECOND PART.
-
-      WHEREAS the parties desire to enter into an agreement for #{@description};
-
-      WHEREAS both parties have agreed to the terms and conditions set forth herein;
-
-      NOW THEREFORE, in consideration of the mutual covenants and agreements contained herein, the parties agree as follows:
-
-      1. SCOPE OF AGREEMENT
-         1.1 Purpose: [DETAILED_PURPOSE]
-         1.2 Objectives: [SPECIFIC_OBJECTIVES]
-         1.3 Duration: [AGREEMENT_TERM]
-
-      2. OBLIGATIONS OF PARTY A
-         2.1 [PARTY_A_OBLIGATION_1]
-         2.2 [PARTY_A_OBLIGATION_2]
-         2.3 [PARTY_A_OBLIGATION_3]
-
-      3. OBLIGATIONS OF PARTY B
-         3.1 [PARTY_B_OBLIGATION_1]
-         3.2 [PARTY_B_OBLIGATION_2]
-         3.3 [PARTY_B_OBLIGATION_3]
-
-      4. FINANCIAL TERMS
-         4.1 Total Value: ₹[AMOUNT] (Rupees [AMOUNT_IN_WORDS])
-         4.2 Payment Schedule: [PAYMENT_TERMS]
-         4.3 GST shall be charged as applicable
-         4.4 TDS deduction as per Income Tax Act, 1961
-
-      5. PERFORMANCE STANDARDS
-         5.1 Quality benchmarks and delivery standards
-         5.2 Timeline for completion of obligations
-         5.3 Monitoring and evaluation mechanisms
-
-      6. INTELLECTUAL PROPERTY
-         6.1 Ownership of existing intellectual property
-         6.2 Rights in jointly developed intellectual property
-         6.3 License grants and restrictions
-
-      7. CONFIDENTIALITY
-         7.1 Protection of proprietary information
-         7.2 Non-disclosure of confidential matters
-         7.3 Return of confidential materials upon termination
-
-      8. TERMINATION
-         8.1 Termination for convenience with [NOTICE_PERIOD] days notice
-         8.2 Termination for cause with immediate effect
-         8.3 Consequences of termination
-
-      9. DISPUTE RESOLUTION
-         9.1 Amicable resolution through mutual consultation
-         9.2 Mediation by mutually agreed mediator
-         9.3 Arbitration under Arbitration and Conciliation Act, 2015
-         9.4 Seat of arbitration: [ARBITRATION_CITY]
-
-      10. FORCE MAJEURE
-          10.1 Neither party liable for delays due to circumstances beyond control
-          10.2 Notification obligations during force majeure events
-          10.3 Mitigation efforts and alternative arrangements
-
-      11. GENERAL PROVISIONS
-          11.1 Entire Agreement: This constitutes the complete agreement
-          11.2 Amendment: Changes only through written agreement
-          11.3 Severability: Invalid provisions don't affect remainder
-          11.4 Waiver: No waiver except in writing
-          11.5 Assignment: Rights not assignable without consent
-
-      12. GOVERNING LAW AND JURISDICTION
-          12.1 This Agreement shall be governed by the laws of India
-          12.2 Subject to the exclusive jurisdiction of courts in [JURISDICTION_CITY]
-          12.3 Compliance with all applicable Indian laws and regulations
-    TEMPLATE
   end
 end
