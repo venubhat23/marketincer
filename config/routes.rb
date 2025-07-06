@@ -19,6 +19,16 @@ Rails.application.routes.draw do
       get 'influencer/analytics', to: 'influencer_analytics#show'
       get 'influencer_analytics/:page_id', to: 'influencer_analytics#show_single'
 
+      # Instagram Analytics API
+      resources :instagram_analytics, only: [:index, :show], param: :page_id do
+        member do
+          get :profile
+          get :media
+          get :analytics
+          get 'media/:media_id', to: 'instagram_analytics#media_details', as: :media_details
+        end
+      end
+
       post 'signup', to: 'registrations#create'
       post 'login', to: 'sessions#create'
       get 'activate/:token', to: 'registrations#activate', as: 'activate'
