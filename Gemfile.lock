@@ -75,6 +75,8 @@ GEM
     addressable (2.8.7)
       public_suffix (>= 2.0.2, < 7.0)
     amazing_print (1.7.2)
+    anthropic (1.1.1)
+      connection_pool
     ast (2.4.2)
     base64 (0.2.0)
     bcrypt (3.1.20)
@@ -114,10 +116,13 @@ GEM
       tzinfo
     ethon (0.16.0)
       ffi (>= 1.15.0)
+    event_stream_parser (1.0.0)
     faraday (2.13.1)
       faraday-net_http (>= 2.0, < 3.5)
       json
       logger
+    faraday-multipart (1.1.1)
+      multipart-post (~> 2.0)
     faraday-net_http (3.4.0)
       net-http (>= 0.5.0)
     ffi (1.17.1-x86_64-linux-gnu)
@@ -207,6 +212,7 @@ GEM
     msgpack (1.7.5)
     multi_xml (0.7.2)
       bigdecimal (~> 3.1)
+    multipart-post (2.4.1)
     net-http (0.6.0)
       uri
     net-imap (0.5.5)
@@ -354,6 +360,10 @@ GEM
       rubocop-minitest
       rubocop-performance
       rubocop-rails
+    ruby-openai (8.1.0)
+      event_stream_parser (>= 0.3.0, < 2.0.0)
+      faraday (>= 1)
+      faraday-multipart (>= 1)
     ruby-progressbar (1.13.0)
     securerandom (0.4.1)
     sidekiq (8.0.1)
@@ -412,6 +422,7 @@ PLATFORMS
 
 DEPENDENCIES
   amazing_print
+  anthropic
   bcrypt
   bootsnap
   brakeman
@@ -436,6 +447,7 @@ DEPENDENCIES
   rails (~> 8.0.1)
   redis
   rubocop-rails-omakase
+  ruby-openai
   sidekiq
   solid_cable
   solid_cache
