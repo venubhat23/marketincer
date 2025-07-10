@@ -390,6 +390,7 @@ class AiContractGenerationService
   def format_ai_contract(ai_content)
     formatted_content = ai_content.strip
 
+
     # Ensure signature section exists
     unless formatted_content.match?(/signature|sign.*:|witness/i)
       formatted_content += "\n\n#{signature_section}"
