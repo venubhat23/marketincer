@@ -150,29 +150,36 @@ class AiContractGenerationService
     contract_type = determine_contract_type(description)
     entities = extract_entities_from_description(description)
     
+    # Build entity summary for the prompt
+    entity_summary = build_entity_summary(entities)
+    
     <<~PROMPT
       Please draft a comprehensive #{contract_type} based on the following requirements:
 
       **Contract Description:** #{description}
 
       **Detected Contract Type:** #{contract_type}
-      #{entities.present? ? "**Key Entities:** #{entities.join(', ')}" : ''}
+      
+      #{entity_summary}
 
       **Requirements:**
       1. Create a complete, professional contract with all necessary legal sections
       2. Include proper contract title, parties identification, and recitals
       3. Add detailed scope of work/services section
       4. Include comprehensive terms and conditions
-      5. Add payment terms, timelines, and deliverables
+      5. Add payment terms, timelines, and deliverables (use extracted amounts and dates if available)
       6. Include termination clauses and dispute resolution
       7. Add intellectual property rights clauses if applicable
       8. Include confidentiality provisions if needed
       9. Add proper signature blocks and witness sections
-      10. Include governing law and jurisdiction clauses
+      10. Include governing law and jurisdiction clauses (use extracted locations if available)
       11. Add force majeure and other standard boilerplate clauses
-      12. Use placeholder values in [BRACKETS] for customization
+      12. Use placeholder values in [BRACKETS] for customization, but incorporate extracted entities where appropriate
       13. Include legal disclaimers and notices
 
+      **Specific Instructions:**
+      #{build_entity_specific_instructions(entities)}
+      
       **Specific Focus Areas:**
       - Make it legally sound and enforceable
       - Ensure it protects both parties' interests
@@ -180,26 +187,254 @@ class AiContractGenerationService
       - Make it comprehensive yet clear and readable
       - Follow standard legal contract formatting
       - Include all necessary legal protections
+      - Personalize using the extracted entities where appropriate
 
-      Please generate a complete, professional contract that would be suitable for actual business use.
+      Please generate a complete, professional contract that would be suitable for actual business use, incorporating the extracted information naturally into the contract structure.
     PROMPT
   end
 
+  def build_entity_summary(entities)
+    summary_parts = []
+    
+    if entities[:parties]&.any?
+      summary_parts << "**Identified Parties:** #{entities[:parties].join(' and ')}"
+    end
+    
+    if entities[:companies]&.any?
+      summary_parts << "**Companies/Brands:** #{entities[:companies].join(', ')}"
+    end
+    
+    if entities[:amounts]&.any?
+      summary_parts << "**Payment Amounts:** #{entities[:amounts].join(', ')}"
+    end
+    
+    if entities[:dates]&.any?
+      summary_parts << "**Important Dates:** #{entities[:dates].join(', ')}"
+    end
+    
+    if entities[:durations]&.any?
+      summary_parts << "**Contract Duration:** #{entities[:durations].join(', ')}"
+    end
+    
+    if entities[:locations]&.any?
+      summary_parts << "**Locations/Jurisdiction:** #{entities[:locations].join(', ')}"
+    end
+    
+    if entities[:contract_types]&.any?
+      summary_parts << "**Contract Type Keywords:** #{entities[:contract_types].join(', ')}"
+    end
+    
+    return "**Extracted Information:**\n#{summary_parts.join("\n")}\n" if summary_parts.any?
+    ""
+  end
+
+  def build_entity_specific_instructions(entities)
+    instructions = []
+    
+    if entities[:parties]&.any?
+      party_a = entities[:parties][0] || "[PARTY_A]"
+      party_b = entities[:parties][1] || "[PARTY_B]"
+      instructions << "- Use '#{party_a}' and '#{party_b}' as the contracting parties instead of generic placeholders"
+    end
+    
+    if entities[:amounts]&.any?
+      amount = entities[:amounts].first
+      instructions << "- Include payment terms specifying amount of #{amount} (adjust currency and format as appropriate)"
+    end
+    
+    if entities[:dates]&.any?
+      date = entities[:dates].first
+      instructions << "- Use #{date} as the effective date or reference date in the contract"
+    end
+    
+    if entities[:companies]&.any?
+      companies = entities[:companies].join(' and ')
+      instructions << "- Reference #{companies} specifically in the contract context"
+    end
+    
+    if entities[:locations]&.any?
+      location = entities[:locations].first
+      instructions << "- Use #{location} laws for governing law clauses and jurisdiction"
+    end
+    
+    if entities[:durations]&.any?
+      duration = entities[:durations].first
+      instructions << "- Set contract term/duration to #{duration}"
+    end
+    
+    instructions.any? ? instructions.join("\n") : "- Use standard placeholder values as appropriate"
+  end
+
   def extract_entities_from_description(description)
-    entities = []
+    entities = {}
     
-    # Extract company names, brands, and other entities
-    entities << "Nike" if description.match?(/nike/i)
-    entities << "Influencer" if description.match?(/influencer/i)
-    entities << "Brand" if description.match?(/brand/i)
-    entities << "Service Provider" if description.match?(/service/i)
-    entities << "Employee" if description.match?(/employ/i)
-    entities << "Contractor" if description.match?(/contract/i)
-    entities << "Vendor" if description.match?(/vendor|supplier/i)
-    entities << "Client" if description.match?(/client/i)
-    entities << "Agency" if description.match?(/agency/i)
+    # Extract parties/names (looking for patterns like "between X and Y", "with X", etc.)
+    parties = extract_parties(description)
+    entities[:parties] = parties if parties.any?
     
-    entities.uniq
+    # Extract amounts/payments (Rs, $, EUR, etc.)
+    amounts = extract_amounts(description)
+    entities[:amounts] = amounts if amounts.any?
+    
+    # Extract dates (today, tomorrow, specific dates, etc.)
+    dates = extract_dates(description)
+    entities[:dates] = dates if dates.any?
+    
+    # Extract contract types
+    contract_types = extract_contract_keywords(description)
+    entities[:contract_types] = contract_types if contract_types.any?
+    
+    # Extract locations/jurisdictions
+    locations = extract_locations(description)
+    entities[:locations] = locations if locations.any?
+    
+    # Extract company/brand names
+    companies = extract_companies(description)
+    entities[:companies] = companies if companies.any?
+    
+    # Extract timeframes/durations
+    durations = extract_durations(description)
+    entities[:durations] = durations if durations.any?
+    
+    entities
+  end
+
+  def extract_parties(description)
+    parties = []
+    
+    # Patterns like "between X and Y", "with X", "X and Y agreement"
+    if match = description.match(/between\s+([a-zA-Z\s]+?)\s+and\s+([a-zA-Z\s]+?)(?:\s+on|\s+for|\s+of|$)/i)
+      parties << match[1].strip.titleize
+      parties << match[2].strip.titleize
+    elsif match = description.match(/agreement\s+with\s+([a-zA-Z\s]+?)(?:\s+for|\s+on|$)/i)
+      parties << match[1].strip.titleize
+    elsif match = description.match(/([a-zA-Z\s]+?)\s+and\s+([a-zA-Z\s]+?)\s+(?:agreement|contract)/i)
+      parties << match[1].strip.titleize
+      parties << match[2].strip.titleize
+    end
+    
+    # Clean up common words that aren't actually party names
+    parties.reject! { |party| 
+      %w[service agreement contract collaboration sponsorship employment the a an].include?(party.downcase.strip)
+    }
+    
+    parties.uniq
+  end
+
+  def extract_amounts(description)
+    amounts = []
+    
+    # Match various currency patterns
+    currency_patterns = [
+      /rs\.?\s*(\d+(?:,\d{3})*(?:\.\d{2})?)/i,  # Rs 5000, Rs. 5,000
+      /₹\s*(\d+(?:,\d{3})*(?:\.\d{2})?)/,       # ₹5000
+      /\$\s*(\d+(?:,\d{3})*(?:\.\d{2})?)/,      # $5000
+      /(\d+(?:,\d{3})*(?:\.\d{2})?)\s*(?:rupees|dollars|usd|inr)/i,  # 5000 rupees
+      /(?:amount|payment|fee|salary|compensation)\s+of\s+.*?(\d+(?:,\d{3})*(?:\.\d{2})?)/i
+    ]
+    
+    currency_patterns.each do |pattern|
+      matches = description.scan(pattern)
+      matches.each { |match| amounts << match.is_a?(Array) ? match[0] : match }
+    end
+    
+    amounts.uniq
+  end
+
+  def extract_dates(description)
+    dates = []
+    
+    # Date patterns
+    date_patterns = [
+      /(?:on|from|starting|effective)\s+(today|tomorrow|yesterday)/i,
+      /(?:on|from|starting|effective)\s+(\d{1,2}[-\/]\d{1,2}[-\/]\d{2,4})/,
+      /(?:on|from|starting|effective)\s+(\d{1,2}\s+(?:january|february|march|april|may|june|july|august|september|october|november|december)\s+\d{2,4})/i,
+      /(?:date|dated)\s+(\d{1,2}[-\/]\d{1,2}[-\/]\d{2,4})/i,
+      /(january|february|march|april|may|june|july|august|september|october|november|december)\s+\d{1,2},?\s+\d{2,4}/i
+    ]
+    
+    date_patterns.each do |pattern|
+      matches = description.scan(pattern)
+      matches.each { |match| dates << (match.is_a?(Array) ? match[0] : match) }
+    end
+    
+    # Handle relative dates
+    if description.match?(/today/i)
+      dates << Date.current.strftime('%B %d, %Y')
+    elsif description.match?(/tomorrow/i)
+      dates << Date.current.tomorrow.strftime('%B %d, %Y')
+    end
+    
+    dates.uniq
+  end
+
+  def extract_contract_keywords(description)
+    keywords = []
+    
+    contract_patterns = {
+      'Service Agreement' => /service|consulting|freelance|contractor|work/i,
+      'NDA' => /confidential|nda|non-disclosure|secret|proprietary/i,
+      'Influencer Agreement' => /influencer|social media|brand collaboration|promotion|marketing/i,
+      'Employment Contract' => /employ|job|hiring|salary|position/i,
+      'Sponsorship Agreement' => /sponsor|event|partnership/i,
+      'Collaboration Agreement' => /collaboration|collab|partner/i,
+      'Vendor Agreement' => /vendor|supplier|purchase/i,
+      'License Agreement' => /license|intellectual property|software/i
+    }
+    
+    contract_patterns.each do |type, pattern|
+      keywords << type if description.match?(pattern)
+    end
+    
+    keywords
+  end
+
+  def extract_companies(description)
+    companies = []
+    
+    # Common brand/company patterns
+    known_companies = %w[nike adidas google microsoft apple amazon facebook meta twitter linkedin youtube instagram]
+    known_companies.each do |company|
+      companies << company.titleize if description.match?(/\b#{company}\b/i)
+    end
+    
+    # Pattern for company-like words (capitalized, could be brand names)
+    company_matches = description.scan(/\b[A-Z][a-z]*(?:\s+[A-Z][a-z]*)*\b/)
+    company_matches.each do |match|
+      next if %w[Agreement Contract Service Employment].include?(match)
+      companies << match if match.length > 2
+    end
+    
+    companies.uniq
+  end
+
+  def extract_locations(description)
+    locations = []
+    
+    # Common locations/jurisdictions
+    jurisdictions = %w[india usa us uk canada australia singapore mumbai delhi bangalore hyderabad pune chennai kolkata]
+    jurisdictions.each do |location|
+      locations << location.titleize if description.match?(/\b#{location}\b/i)
+    end
+    
+    locations.uniq
+  end
+
+  def extract_durations(description)
+    durations = []
+    
+    duration_patterns = [
+      /(\d+)\s+(?:months?|years?|days?|weeks?)/i,
+      /(?:for|duration|term)\s+(?:of\s+)?(\d+\s+(?:months?|years?|days?|weeks?))/i,
+      /(one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve)\s+(?:months?|years?)/i
+    ]
+    
+    duration_patterns.each do |pattern|
+      matches = description.scan(pattern)
+      matches.each { |match| durations << (match.is_a?(Array) ? match[0] : match) }
+    end
+    
+    durations.uniq
   end
 
   def generate_with_huggingface(description)
@@ -406,9 +641,9 @@ class AiContractGenerationService
     contract_type = determine_contract_type(@description)
     entities = extract_entities_from_description(@description)
     
-    Rails.logger.info "Generating intelligent template for #{contract_type}"
+    Rails.logger.info "Generating intelligent template for #{contract_type} with entities: #{entities}"
     
-    case contract_type.downcase
+    template_content = case contract_type.downcase
     when /non-disclosure|nda|confidential/
       nda_template_enhanced
     when /influencer|social media|brand/
@@ -426,6 +661,62 @@ class AiContractGenerationService
     else
       general_template_enhanced
     end
+    
+    # Personalize template with extracted entities
+    personalize_template_with_entities(template_content, entities)
+  end
+
+  def personalize_template_with_entities(template, entities)
+    personalized = template.dup
+    
+    # Replace party placeholders with extracted names
+    if entities[:parties]&.any?
+      party_a = entities[:parties][0]
+      party_b = entities[:parties][1] if entities[:parties].size > 1
+      
+      personalized.gsub!(/\[PARTY_A\]|\[FIRST_PARTY\]|\[COMPANY_NAME\]/, party_a) if party_a
+      personalized.gsub!(/\[PARTY_B\]|\[SECOND_PARTY\]|\[CLIENT_NAME\]|\[INFLUENCER_NAME\]/, party_b) if party_b
+    end
+    
+    # Replace amount placeholders
+    if entities[:amounts]&.any?
+      amount = entities[:amounts].first
+      currency = amount.match?(/rs|₹|rupees/i) ? 'Rs' : '$'
+      personalized.gsub!(/\[AMOUNT\]|\[PAYMENT_AMOUNT\]|\[COMPENSATION\]/, "#{currency} #{amount}")
+    end
+    
+    # Replace date placeholders
+    if entities[:dates]&.any?
+      date = entities[:dates].first
+      personalized.gsub!(/\[DATE\]|\[EFFECTIVE_DATE\]|\[AGREEMENT_DATE\]/, date)
+    end
+    
+    # Replace location/jurisdiction placeholders
+    if entities[:locations]&.any?
+      location = entities[:locations].first
+      personalized.gsub!(/\[JURISDICTION\]|\[GOVERNING_LAW\]/, "the laws of #{location}")
+      personalized.gsub!(/\[LOCATION\]|\[CITY\]/, location)
+    end
+    
+    # Replace company/brand specific placeholders
+    if entities[:companies]&.any?
+      company = entities[:companies].first
+      personalized.gsub!(/\[BRAND_NAME\]|\[COMPANY\]/, company)
+    end
+    
+    # Replace duration placeholders
+    if entities[:durations]&.any?
+      duration = entities[:durations].first
+      personalized.gsub!(/\[TERM\]|\[DURATION\]|\[CONTRACT_PERIOD\]/, duration)
+    end
+    
+    # If no specific date was provided but "today" was mentioned, use current date
+    if @description.match?(/today/i) && !entities[:dates]&.any?
+      current_date = Date.current.strftime('%B %d, %Y')
+      personalized.gsub!(/\[DATE\]|\[EFFECTIVE_DATE\]|\[AGREEMENT_DATE\]/, current_date)
+    end
+    
+    personalized
   end
 
   def nda_template_enhanced
