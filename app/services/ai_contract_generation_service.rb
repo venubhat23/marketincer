@@ -20,12 +20,19 @@ class AiContractGenerationService
     @timeout = 120
     @max_retries = 3
     @openai_client = setup_openai_client if OPENAI_API_KEY.present?
+    @entities = extract_entities_from_description(description)
   end
 
   def generate
     retries = 0
 
     begin
+      # For simple contract requests, use enhanced template generation
+      if should_use_enhanced_template?
+        Rails.logger.info "Using enhanced template generation for simple contract request"
+        return generate_enhanced_contract_template
+      end
+      
       # Try OpenAI first (much better quality)
       if @openai_client
         Rails.logger.info "Using OpenAI for contract generation"
@@ -302,21 +309,57 @@ class AiContractGenerationService
   def extract_parties(description)
     parties = []
     
-    # Patterns like "between X and Y", "with X", "X and Y agreement"
-    if match = description.match(/between\s+([a-zA-Z\s]+?)\s+and\s+([a-zA-Z\s]+?)(?:\s+on|\s+for|\s+of|$)/i)
+    # Enhanced patterns for better party extraction
+    # Pattern 1: "between X and Y" with various contexts
+    if match = description.match(/between\s+([a-zA-Z\s]+?)\s+and\s+([a-zA-Z\s]+?)(?:\s+on|\s+for|\s+of|\s+date|\s+rs|\s+\$|\s+₹|$)/i)
       parties << match[1].strip.titleize
       parties << match[2].strip.titleize
-    elsif match = description.match(/agreement\s+with\s+([a-zA-Z\s]+?)(?:\s+for|\s+on|$)/i)
+    # Pattern 2: "agreement with X"
+    elsif match = description.match(/agreement\s+with\s+([a-zA-Z\s]+?)(?:\s+for|\s+on|\s+date|\s+rs|\s+\$|\s+₹|$)/i)
       parties << match[1].strip.titleize
+    # Pattern 3: "X and Y agreement/contract"
     elsif match = description.match(/([a-zA-Z\s]+?)\s+and\s+([a-zA-Z\s]+?)\s+(?:agreement|contract)/i)
       parties << match[1].strip.titleize
       parties << match[2].strip.titleize
+    # Pattern 4: "generate [contract type] between X and Y"
+    elsif match = description.match(/generate\s+(?:.*?)\s+between\s+([a-zA-Z\s]+?)\s+and\s+([a-zA-Z\s]+?)(?:\s+on|\s+for|\s+of|\s+date|\s+rs|\s+\$|\s+₹|$)/i)
+      parties << match[1].strip.titleize
+      parties << match[2].strip.titleize
+    # Pattern 5: Look for proper nouns that might be party names
+    elsif matches = description.scan(/\b[A-Z][a-z]+(?:\s+[A-Z][a-z]+)*\b/)
+      # Filter out common contract words and keep potential party names
+      contract_words = %w[Service Agreement Contract Collaboration Sponsorship Employment Generate Create Draft Make]
+      potential_parties = matches.reject { |match| contract_words.include?(match) }
+      parties.concat(potential_parties.first(2)) if potential_parties.length >= 2
     end
     
     # Clean up common words that aren't actually party names
     parties.reject! { |party| 
-      %w[service agreement contract collaboration sponsorship employment the a an].include?(party.downcase.strip)
+      stop_words = %w[service agreement contract collaboration sponsorship employment the a an generate create draft make between and with for on date of rs dollar rupees]
+      stop_words.include?(party.downcase.strip)
     }
+    
+    # Handle special cases for known brands
+    parties.map! do |party|
+      case party.downcase
+      when 'nike'
+        'Nike'
+      when 'google'
+        'Google'
+      when 'microsoft'
+        'Microsoft'
+      when 'apple'
+        'Apple'
+      when 'amazon'
+        'Amazon'
+      when 'facebook'
+        'Facebook'
+      when 'meta'
+        'Meta'
+      else
+        party
+      end
+    end
     
     parties.uniq
   end
@@ -324,18 +367,27 @@ class AiContractGenerationService
   def extract_amounts(description)
     amounts = []
     
-    # Match various currency patterns
+    # Match various currency patterns - enhanced for better detection
     currency_patterns = [
       /rs\.?\s*(\d+(?:,\d{3})*(?:\.\d{2})?)/i,  # Rs 5000, Rs. 5,000
       /₹\s*(\d+(?:,\d{3})*(?:\.\d{2})?)/,       # ₹5000
       /\$\s*(\d+(?:,\d{3})*(?:\.\d{2})?)/,      # $5000
       /(\d+(?:,\d{3})*(?:\.\d{2})?)\s*(?:rupees|dollars|usd|inr)/i,  # 5000 rupees
-      /(?:amount|payment|fee|salary|compensation)\s+of\s+.*?(\d+(?:,\d{3})*(?:\.\d{2})?)/i
+      /(?:amount|payment|fee|salary|compensation)\s+of\s+.*?(\d+(?:,\d{3})*(?:\.\d{2})?)/i,
+      /(?:of|for)\s+rs\.?\s*(\d+(?:,\d{3})*(?:\.\d{2})?)/i,  # "of rs 5000"
+      /(?:of|for)\s+₹\s*(\d+(?:,\d{3})*(?:\.\d{2})?)/i,      # "of ₹5000"
+      /(?:date|on)\s+.*?rs\.?\s*(\d+(?:,\d{3})*(?:\.\d{2})?)/i, # "on date of rs 5000"
+      /(?:price|cost|value|worth)\s+.*?(\d+(?:,\d{3})*(?:\.\d{2})?)/i
     ]
     
     currency_patterns.each do |pattern|
       matches = description.scan(pattern)
-      matches.each { |match| amounts << match.is_a?(Array) ? match[0] : match }
+      matches.each { |match| amounts << (match.is_a?(Array) ? match[0] : match) }
+    end
+    
+    # Special handling for the specific pattern "on date of rs 5000"
+    if match = description.match(/on\s+date\s+of\s+rs\.?\s*(\d+(?:,\d{3})*(?:\.\d{2})?)/i)
+      amounts << match[1]
     end
     
     amounts.uniq
@@ -372,7 +424,7 @@ class AiContractGenerationService
     keywords = []
     
     contract_patterns = {
-      'Service Agreement' => /service|consulting|freelance|contractor|work/i,
+      'Service Agreement' => /service\s+agreement|service|consulting|freelance|contractor|work/i,
       'NDA' => /confidential|nda|non-disclosure|secret|proprietary/i,
       'Influencer Agreement' => /influencer|social media|brand collaboration|promotion|marketing/i,
       'Employment Contract' => /employ|job|hiring|salary|position/i,
@@ -382,11 +434,19 @@ class AiContractGenerationService
       'License Agreement' => /license|intellectual property|software/i
     }
     
+    # Check for explicit contract type mentions first
+    if description.match?(/generate\s+(\w+\s+agreement|\w+\s+contract)/i)
+      match = description.match(/generate\s+(\w+\s+agreement|\w+\s+contract)/i)
+      contract_type = match[1].titleize if match
+      keywords << contract_type if contract_type
+    end
+    
+    # Then check for pattern matches
     contract_patterns.each do |type, pattern|
       keywords << type if description.match?(pattern)
     end
     
-    keywords
+    keywords.uniq
   end
 
   def extract_companies(description)
@@ -1391,5 +1451,631 @@ class AiContractGenerationService
       For legal advice, consult with a qualified attorney in your jurisdiction.
       ═══════════════════════════════════════════════════════════════════════════════════════
     METADATA
+  end
+
+  def should_use_enhanced_template?
+    # Use enhanced template for simple, well-structured requests
+    has_parties = @entities[:parties]&.any?
+    has_contract_type = @entities[:contract_types]&.any?
+    has_amount = @entities[:amounts]&.any?
+    
+    # If we have basic entities and it's a simple request, use enhanced template
+    (has_parties && has_contract_type) || (has_parties && has_amount)
+  end
+
+  def generate_enhanced_contract_template
+    contract_type = determine_primary_contract_type
+    
+    case contract_type.downcase
+    when 'service agreement', 'service', 'consulting'
+      return generate_service_agreement_template
+    when 'influencer agreement', 'influencer', 'brand collaboration'
+      return generate_influencer_agreement_template
+    when 'nda', 'non-disclosure', 'confidentiality'
+      return generate_nda_template
+    when 'employment', 'job', 'hiring'
+      return generate_employment_template
+    when 'sponsorship', 'sponsor'
+      return generate_sponsorship_template
+    else
+      return generate_service_agreement_template # Default to service agreement
+    end
+  end
+
+  def determine_primary_contract_type
+    return @entities[:contract_types]&.first if @entities[:contract_types]&.any?
+    
+    # Fallback to description analysis
+    desc = @description.downcase
+    
+    return 'Service Agreement' if desc.include?('service') || desc.include?('consulting') || desc.include?('freelance')
+    return 'Influencer Agreement' if desc.include?('influencer') || desc.include?('social media') || desc.include?('brand')
+    return 'NDA' if desc.include?('nda') || desc.include?('confidential') || desc.include?('non-disclosure')
+    return 'Employment Contract' if desc.include?('employment') || desc.include?('job') || desc.include?('hiring')
+    return 'Sponsorship Agreement' if desc.include?('sponsor') || desc.include?('partnership')
+    
+    'Service Agreement' # Default
+  end
+
+  def generate_service_agreement_template
+    party_a = @entities[:parties]&.first || "[PARTY_A]"
+    party_b = @entities[:parties]&.second || "[PARTY_B]"
+    amount = format_amount(@entities[:amounts]&.first) || "[AMOUNT]"
+    date = format_date(@entities[:dates]&.first) || Date.current.strftime('%B %d, %Y')
+    
+    # Determine party roles based on context
+    company_party, individual_party = determine_party_roles(party_a, party_b)
+    
+    <<~TEMPLATE
+Here's a professional **Service Agreement** between #{company_party} and #{individual_party} for #{amount}, effective #{date}:
+
+---
+
+**SERVICE AGREEMENT**
+
+This Service Agreement ("Agreement") is made and entered into on **#{date}**, by and between:
+
+**#{company_party}**
+#{get_company_address(company_party)}
+(Hereinafter referred to as "Company")
+
+AND
+
+**#{individual_party}**
+[Address of #{individual_party}]
+(Hereinafter referred to as "Service Provider")
+
+---
+
+### 1. **Scope of Work**
+
+The Service Provider agrees to provide professional services as mutually agreed upon between the parties. This may include consulting, content creation, technical services, or other professional services as specified in the project requirements.
+
+### 2. **Compensation**
+
+In exchange for the services rendered by the Service Provider, the Company agrees to pay a total amount of **#{amount}**. Payment will be made within **7 business days** upon receipt of invoice and completion of deliverables.
+
+### 3. **Deliverables and Timeline**
+
+The Service Provider shall deliver the agreed-upon services within the timeline specified in the project scope. All deliverables must meet the quality standards and requirements set forth by the Company.
+
+### 4. **Intellectual Property Rights**
+
+The Service Provider grants the Company a non-exclusive, royalty-free, worldwide license to use, modify, reproduce, and distribute any work product created under this Agreement. The Service Provider retains ownership of any pre-existing intellectual property.
+
+### 5. **Term and Termination**
+
+This Agreement shall be effective from the date of signing and shall remain in effect until the completion of services or unless terminated earlier by either party with written notice of **5 days**.
+
+### 6. **Confidentiality**
+
+Both parties agree to keep the terms of this Agreement and any proprietary information confidential and not to disclose to third parties without prior written consent.
+
+### 7. **Payment Terms**
+
+- Payment Amount: **#{amount}**
+- Payment Schedule: Upon completion of deliverables
+- Late Payment: Interest charges may apply after 30 days
+- Currency: Indian Rupees (INR)
+
+### 8. **Governing Law**
+
+This Agreement shall be governed by and construed in accordance with the laws of India. Any disputes shall be resolved through arbitration in accordance with the Indian Arbitration and Conciliation Act.
+
+### 9. **Force Majeure**
+
+Neither party shall be liable for any failure or delay in performance due to circumstances beyond their reasonable control, including but not limited to acts of God, natural disasters, war, terrorism, or government actions.
+
+### 10. **Entire Agreement**
+
+This Agreement constitutes the entire agreement between the parties and supersedes all prior negotiations, representations, or agreements relating to the subject matter hereof.
+
+---
+
+**IN WITNESS WHEREOF**, the parties hereto have executed this Service Agreement as of the date first written above.
+
+**For #{company_party}**
+Signature: \_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_
+Name: \_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_
+Designation: \_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_
+Date: \_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_
+
+**For #{individual_party}**
+Signature: \_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_
+Name: #{individual_party}
+Date: \_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_
+
+---
+
+*This contract has been generated automatically. Please review all terms carefully and consult with legal counsel before signing. Customize the specific terms, addresses, and details as needed for your particular situation.*
+    TEMPLATE
+  end
+
+  def generate_influencer_agreement_template
+    party_a = @entities[:parties]&.first || "[BRAND]"
+    party_b = @entities[:parties]&.second || "[INFLUENCER]"
+    amount = format_amount(@entities[:amounts]&.first) || "[AMOUNT]"
+    date = format_date(@entities[:dates]&.first) || Date.current.strftime('%B %d, %Y')
+    
+    # Determine brand and influencer
+    brand_party, influencer_party = determine_brand_influencer_roles(party_a, party_b)
+    
+    <<~TEMPLATE
+Here's a professional **Influencer Collaboration Agreement** between #{brand_party} and #{influencer_party} for #{amount}, effective #{date}:
+
+---
+
+**INFLUENCER COLLABORATION AGREEMENT**
+
+This Influencer Collaboration Agreement ("Agreement") is made and entered into on **#{date}**, by and between:
+
+**#{brand_party}**
+#{get_company_address(brand_party)}
+(Hereinafter referred to as "Brand")
+
+AND
+
+**#{influencer_party}**
+[Address of #{influencer_party}]
+(Hereinafter referred to as "Influencer")
+
+---
+
+### 1. **Scope of Collaboration**
+
+The Influencer agrees to create and share content promoting #{brand_party}'s products or services through their social media channels/platforms. This may include videos, posts, stories, reels, or any form of media mutually agreed upon.
+
+### 2. **Compensation**
+
+In exchange for the services rendered by the Influencer, #{brand_party} agrees to pay a total amount of **#{amount}**. Payment will be made within **7 business days** upon receipt of invoice and completion of deliverables.
+
+### 3. **Content Requirements**
+
+- **Platform(s)**: Instagram, Facebook, Twitter, YouTube, TikTok (as applicable)
+- **Content Type**: Posts, Stories, Reels, Videos
+- **Posting Schedule**: As mutually agreed
+- **Hashtags**: Must include brand-specific hashtags and #ad or #sponsored as required by law
+- **Brand Mentions**: Proper tagging and mention of #{brand_party}
+
+### 4. **Content Ownership and Usage Rights**
+
+The Influencer grants #{brand_party} a non-exclusive, royalty-free, worldwide license to use, modify, reproduce, and distribute the created content across all marketing channels including but not limited to social media, email campaigns, websites, and advertisements.
+
+### 5. **Deliverables and Timeline**
+
+The Influencer shall deliver the agreed-upon content within the timeline specified. All content must be approved by #{brand_party} before publication and must align with brand guidelines.
+
+### 6. **FTC Compliance and Disclosure**
+
+The Influencer agrees to comply with all applicable laws and regulations, including FTC guidelines for sponsored content. All sponsored posts must include proper disclosure (#ad, #sponsored, #partnership).
+
+### 7. **Exclusivity**
+
+During the term of this Agreement, the Influencer agrees not to promote competing brands or products without prior written consent from #{brand_party}.
+
+### 8. **Term and Termination**
+
+This Agreement shall be effective from the date of signing and shall remain in effect until the completion of services or unless terminated earlier by either party with written notice of **5 days**.
+
+### 9. **Payment Terms**
+
+- Payment Amount: **#{amount}**
+- Payment Schedule: Upon completion and approval of deliverables
+- Late Payment: Interest charges may apply after 30 days
+- Currency: Indian Rupees (INR)
+
+### 10. **Governing Law**
+
+This Agreement shall be governed by and construed in accordance with the laws of India.
+
+---
+
+**IN WITNESS WHEREOF**, the parties hereto have executed this Influencer Collaboration Agreement as of the date first written above.
+
+**For #{brand_party}**
+Signature: \_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_
+Name: \_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_
+Designation: \_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_
+Date: \_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_
+
+**For #{influencer_party}**
+Signature: \_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_
+Name: #{influencer_party}
+Date: \_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_
+
+---
+
+*This contract has been generated automatically. Please review all terms carefully and consult with legal counsel before signing. Customize the specific terms, addresses, and details as needed for your particular situation.*
+    TEMPLATE
+  end
+
+  def generate_nda_template
+    party_a = @entities[:parties]&.first || "[PARTY_A]"
+    party_b = @entities[:parties]&.second || "[PARTY_B]"
+    date = format_date(@entities[:dates]&.first) || Date.current.strftime('%B %d, %Y')
+    
+    # Determine company and individual
+    company_party, individual_party = determine_party_roles(party_a, party_b)
+    
+    <<~TEMPLATE
+Here's a professional **Non-Disclosure Agreement (NDA)** between #{company_party} and #{individual_party}, effective #{date}:
+
+---
+
+**NON-DISCLOSURE AGREEMENT**
+
+This Non-Disclosure Agreement ("Agreement") is made and entered into on **#{date}**, by and between:
+
+**#{company_party}**
+#{get_company_address(company_party)}
+(Hereinafter referred to as "Disclosing Party")
+
+AND
+
+**#{individual_party}**
+[Address of #{individual_party}]
+(Hereinafter referred to as "Receiving Party")
+
+---
+
+### 1. **Purpose**
+
+The parties wish to explore potential business opportunities and may need to disclose certain confidential information to each other for evaluation purposes.
+
+### 2. **Definition of Confidential Information**
+
+"Confidential Information" shall mean all non-public, proprietary, or confidential information disclosed by either party, including but not limited to:
+- Technical data, trade secrets, know-how, research, product plans
+- Business information, customer lists, financial information
+- Marketing strategies, pricing information, business plans
+- Any other information marked as confidential or that would reasonably be considered confidential
+
+### 3. **Obligations of Receiving Party**
+
+The Receiving Party agrees to:
+- Hold all Confidential Information in strict confidence
+- Not disclose Confidential Information to third parties without written consent
+- Use Confidential Information solely for the purpose of evaluating potential business opportunities
+- Take reasonable measures to protect the confidentiality of the information
+- Not reverse engineer or attempt to derive the underlying know-how
+
+### 4. **Exceptions**
+
+This Agreement does not apply to information that:
+- Is already publicly available or becomes publicly available through no breach of this Agreement
+- Is already known to the Receiving Party at the time of disclosure
+- Is independently developed by the Receiving Party without use of Confidential Information
+- Is rightfully received from a third party without breach of confidentiality
+
+### 5. **Term**
+
+This Agreement shall remain in effect for a period of **3 years** from the date of signing, unless terminated earlier by mutual written consent.
+
+### 6. **Return of Information**
+
+Upon termination of this Agreement or upon request, the Receiving Party shall return or destroy all documents and materials containing Confidential Information.
+
+### 7. **Remedies**
+
+The Receiving Party acknowledges that any breach of this Agreement may cause irreparable harm to the Disclosing Party, and therefore the Disclosing Party shall be entitled to seek injunctive relief and other equitable remedies.
+
+### 8. **Governing Law**
+
+This Agreement shall be governed by and construed in accordance with the laws of India.
+
+---
+
+**IN WITNESS WHEREOF**, the parties hereto have executed this Non-Disclosure Agreement as of the date first written above.
+
+**For #{company_party}**
+Signature: \_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_
+Name: \_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_
+Designation: \_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_
+Date: \_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_
+
+**For #{individual_party}**
+Signature: \_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_
+Name: #{individual_party}
+Date: \_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_
+
+---
+
+*This contract has been generated automatically. Please review all terms carefully and consult with legal counsel before signing. Customize the specific terms, addresses, and details as needed for your particular situation.*
+    TEMPLATE
+  end
+
+  def generate_employment_template
+    party_a = @entities[:parties]&.first || "[COMPANY]"
+    party_b = @entities[:parties]&.second || "[EMPLOYEE]"
+    amount = format_amount(@entities[:amounts]&.first) || "[SALARY]"
+    date = format_date(@entities[:dates]&.first) || Date.current.strftime('%B %d, %Y')
+    
+    # Determine company and employee
+    company_party, employee_party = determine_party_roles(party_a, party_b)
+    
+    <<~TEMPLATE
+Here's a professional **Employment Contract** between #{company_party} and #{employee_party} for #{amount}, effective #{date}:
+
+---
+
+**EMPLOYMENT CONTRACT**
+
+This Employment Contract ("Agreement") is made and entered into on **#{date}**, by and between:
+
+**#{company_party}**
+#{get_company_address(company_party)}
+(Hereinafter referred to as "Company")
+
+AND
+
+**#{employee_party}**
+[Address of #{employee_party}]
+(Hereinafter referred to as "Employee")
+
+---
+
+### 1. **Position and Duties**
+
+The Employee is hired for the position of **[Job Title]** and shall perform duties as assigned by the Company, including but not limited to the responsibilities outlined in the job description.
+
+### 2. **Compensation**
+
+The Company shall pay the Employee a salary of **#{amount}** per annum, payable in accordance with the Company's regular payroll schedule.
+
+### 3. **Employment Term**
+
+This is a **[permanent/fixed-term]** employment agreement commencing on **#{date}**.
+
+### 4. **Working Hours**
+
+The Employee shall work **[40]** hours per week, Monday through Friday, during regular business hours as determined by the Company.
+
+### 5. **Benefits**
+
+The Employee shall be entitled to benefits including:
+- Health insurance coverage
+- Paid time off as per company policy
+- Professional development opportunities
+- Other benefits as outlined in the employee handbook
+
+### 6. **Confidentiality**
+
+The Employee agrees to maintain strict confidentiality regarding all proprietary information, trade secrets, and confidential business information of the Company.
+
+### 7. **Termination**
+
+Either party may terminate this employment with **[30]** days written notice. The Company may terminate immediately for cause including misconduct, breach of contract, or unsatisfactory performance.
+
+### 8. **Governing Law**
+
+This Agreement shall be governed by and construed in accordance with the laws of India and applicable labor laws.
+
+---
+
+**IN WITNESS WHEREOF**, the parties hereto have executed this Employment Contract as of the date first written above.
+
+**For #{company_party}**
+Signature: \_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_
+Name: \_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_
+Designation: \_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_
+Date: \_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_
+
+**For #{employee_party}**
+Signature: \_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_
+Name: #{employee_party}
+Date: \_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_
+
+---
+
+*This contract has been generated automatically. Please review all terms carefully and consult with legal counsel before signing. Customize the specific terms, addresses, and details as needed for your particular situation.*
+    TEMPLATE
+  end
+
+  def generate_sponsorship_template
+    party_a = @entities[:parties]&.first || "[SPONSOR]"
+    party_b = @entities[:parties]&.second || "[SPONSORED_PARTY]"
+    amount = format_amount(@entities[:amounts]&.first) || "[SPONSORSHIP_AMOUNT]"
+    date = format_date(@entities[:dates]&.first) || Date.current.strftime('%B %d, %Y')
+    
+    # Determine sponsor and sponsored party
+    sponsor_party, sponsored_party = determine_party_roles(party_a, party_b)
+    
+    <<~TEMPLATE
+Here's a professional **Sponsorship Agreement** between #{sponsor_party} and #{sponsored_party} for #{amount}, effective #{date}:
+
+---
+
+**SPONSORSHIP AGREEMENT**
+
+This Sponsorship Agreement ("Agreement") is made and entered into on **#{date}**, by and between:
+
+**#{sponsor_party}**
+#{get_company_address(sponsor_party)}
+(Hereinafter referred to as "Sponsor")
+
+AND
+
+**#{sponsored_party}**
+[Address of #{sponsored_party}]
+(Hereinafter referred to as "Sponsored Party")
+
+---
+
+### 1. **Sponsorship Details**
+
+The Sponsor agrees to provide sponsorship support to the Sponsored Party for **[Event/Activity/Project]** in the amount of **#{amount}**.
+
+### 2. **Sponsor Benefits**
+
+In exchange for the sponsorship, the Sponsored Party agrees to provide the following benefits to the Sponsor:
+- Logo placement and brand visibility
+- Marketing and promotional opportunities
+- Social media mentions and coverage
+- Other promotional benefits as mutually agreed
+
+### 3. **Payment Terms**
+
+The Sponsor shall pay the sponsorship amount of **#{amount}** according to the following schedule:
+- **[Payment Schedule]**
+- Payment method: **[Bank Transfer/Check/Other]**
+
+### 4. **Obligations of Sponsored Party**
+
+The Sponsored Party agrees to:
+- Provide agreed-upon promotional benefits
+- Maintain professional standards in all sponsored activities
+- Provide regular updates on sponsored activities
+- Comply with all applicable laws and regulations
+
+### 5. **Term and Termination**
+
+This Agreement shall be effective from **#{date}** and shall continue until **[End Date]** unless terminated earlier by mutual consent or breach of contract.
+
+### 6. **Intellectual Property**
+
+Both parties retain ownership of their respective intellectual property. The Sponsored Party grants the Sponsor a limited license to use their name and likeness for promotional purposes related to the sponsorship.
+
+### 7. **Governing Law**
+
+This Agreement shall be governed by and construed in accordance with the laws of India.
+
+---
+
+**IN WITNESS WHEREOF**, the parties hereto have executed this Sponsorship Agreement as of the date first written above.
+
+**For #{sponsor_party}**
+Signature: \_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_
+Name: \_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_
+Designation: \_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_
+Date: \_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_
+
+**For #{sponsored_party}**
+Signature: \_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_
+Name: #{sponsored_party}
+Date: \_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_
+
+---
+
+*This contract has been generated automatically. Please review all terms carefully and consult with legal counsel before signing. Customize the specific terms, addresses, and details as needed for your particular situation.*
+    TEMPLATE
+  end
+
+  def determine_party_roles(party_a, party_b)
+    # Check if either party is a known company
+    companies = ['nike', 'adidas', 'google', 'microsoft', 'apple', 'amazon', 'facebook', 'meta', 'twitter', 'linkedin', 'youtube', 'instagram']
+    
+    if companies.any? { |company| party_a.downcase.include?(company) }
+      return [party_a, party_b]
+    elsif companies.any? { |company| party_b.downcase.include?(company) }
+      return [party_b, party_a]
+    else
+      # Default assumption: first party is company, second is individual
+      return [party_a, party_b]
+    end
+  end
+
+  def determine_brand_influencer_roles(party_a, party_b)
+    # Similar logic for brand vs influencer
+    brands = ['nike', 'adidas', 'google', 'microsoft', 'apple', 'amazon', 'facebook', 'meta', 'twitter', 'linkedin', 'youtube', 'instagram']
+    
+    if brands.any? { |brand| party_a.downcase.include?(brand) }
+      return [party_a, party_b]
+    elsif brands.any? { |brand| party_b.downcase.include?(brand) }
+      return [party_b, party_a]
+    else
+      return [party_a, party_b]
+    end
+  end
+
+  def get_company_address(company_name)
+    # Return known addresses for major companies
+    case company_name.downcase
+    when 'nike'
+      "One Bowerman Drive, Beaverton, OR 97005, USA"
+    when 'google'
+      "1600 Amphitheatre Parkway, Mountain View, CA 94043, USA"
+    when 'microsoft'
+      "One Microsoft Way, Redmond, WA 98052, USA"
+    when 'apple'
+      "One Apple Park Way, Cupertino, CA 95014, USA"
+    when 'amazon'
+      "410 Terry Ave N, Seattle, WA 98109, USA"
+    when 'facebook', 'meta'
+      "1 Hacker Way, Menlo Park, CA 94301, USA"
+    else
+      "[Address of #{company_name}]"
+    end
+  end
+
+  def format_amount(amount_str)
+    return nil if amount_str.blank?
+    
+    # Clean up the amount string
+    cleaned = amount_str.to_s.gsub(/[^\d.]/, '')
+    
+    if cleaned.present?
+      # Format with proper currency
+      if amount_str.downcase.include?('rs') || amount_str.include?('₹')
+        "₹#{cleaned} (Rupees #{number_to_words(cleaned.to_i)} only)"
+      elsif amount_str.include?('$')
+        "$#{cleaned} (US Dollars #{number_to_words(cleaned.to_i)} only)"
+      else
+        "₹#{cleaned} (Rupees #{number_to_words(cleaned.to_i)} only)"
+      end
+    else
+      amount_str
+    end
+  end
+
+  def number_to_words(number)
+    # Simple number to words conversion for common amounts
+    case number
+    when 1000
+      "One Thousand"
+    when 2000
+      "Two Thousand"
+    when 3000
+      "Three Thousand"
+    when 4000
+      "Four Thousand"
+    when 5000
+      "Five Thousand"
+    when 10000
+      "Ten Thousand"
+    when 15000
+      "Fifteen Thousand"
+    when 20000
+      "Twenty Thousand"
+    when 25000
+      "Twenty Five Thousand"
+    when 50000
+      "Fifty Thousand"
+    when 100000
+      "One Lakh"
+    else
+      number.to_s
+    end
+  end
+
+  def format_date(date_str)
+    return nil if date_str.blank?
+    
+    # Handle relative dates
+    case date_str.downcase
+    when 'today'
+      Date.current.strftime('%B %d, %Y')
+    when 'tomorrow'
+      Date.current.tomorrow.strftime('%B %d, %Y')
+    when 'yesterday'
+      Date.current.yesterday.strftime('%B %d, %Y')
+    else
+      # Try to parse and format the date
+      begin
+        parsed_date = Date.parse(date_str)
+        parsed_date.strftime('%B %d, %Y')
+      rescue
+        date_str
+      end
+    end
   end
 end
