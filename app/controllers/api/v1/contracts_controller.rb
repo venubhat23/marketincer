@@ -163,6 +163,11 @@ class Api::V1::ContractsController < ApplicationController
           ai_log: result[:ai_log]
         }
         
+        # Include contract content if available (for direct AI responses)
+        if result[:contract_content]
+          response_data[:contract_content] = result[:contract_content]
+        end
+        
         # Include contract data if it was saved
         if result[:contract]
           response_data[:contract] = contract_detail(result[:contract])
@@ -382,54 +387,43 @@ class Api::V1::ContractsController < ApplicationController
       contract: existing_contract
     )
 
-    Rails.logger.info "Starting AI contract generation with log ID: #{ai_log.id}"
+    Rails.logger.info "Starting direct AI generation with log ID: #{ai_log.id}"
 
     begin
       ai_log.update!(status: AiGenerationLog::STATUS_PROCESSING)
       
-      # Generate content using enhanced AI service
+      # DIRECT AI GENERATION - Send description directly to AI
       ai_service = AiContractGenerationService.new(description)
-      
-      # Extract entities for better user feedback
-      extracted_entities = ai_service.send(:extract_entities_from_description, description)
-      Rails.logger.info "Extracted entities: #{extracted_entities}"
-      
-      ai_contract_content = ai_service.generate
+      ai_response = ai_service.generate
 
-      if ai_contract_content.blank?
+      if ai_response.blank?
         ai_log.update!(
           status: AiGenerationLog::STATUS_FAILED,
-          error_message: 'AI service returned empty content'
+          error_message: 'AI service returned empty response'
         )
         return { 
           success: false, 
-          message: 'AI failed to generate contract content. Please try again with a more detailed description.',
+          message: 'AI failed to generate response. Please try again with a different description.',
           error_code: 'AI_GENERATION_EMPTY',
           ai_log: ai_log_summary(ai_log)
         }
       end
 
-      # Determine contract type from generated content
-      contract_type = determine_contract_type_from_content(ai_contract_content)
-      
+      # Save the contract if requested
       if existing_contract
         # Update existing contract
         existing_contract.update!(
-          content: ai_contract_content,
+          content: ai_response,
           description: description,
-          status: :draft,
-          contract_type: contract_type[:type_id],
-          category: contract_type[:category_id]
+          status: :draft
         )
         contract = existing_contract
       elsif save_contract
         # Create new contract
         contract = Contract.create!(
-          name: generate_contract_name(description, contract_type[:type_name], extracted_entities),
+          name: "AI Generated Contract - #{Date.current.strftime('%B %Y')}",
           description: description,
-          contract_type: contract_type[:type_id],
-          category: contract_type[:category_id],
-          content: ai_contract_content,
+          content: ai_response,
           status: :draft,
           action: 'draft',
           date_created: Date.current
@@ -439,30 +433,21 @@ class Api::V1::ContractsController < ApplicationController
       # Update AI log with success
       ai_log.update!(
         status: AiGenerationLog::STATUS_COMPLETED,
-        generated_content: ai_contract_content,
+        generated_content: ai_response,
         contract: contract
       )
 
-      Rails.logger.info "AI contract generation completed successfully"
-
-      # Build success message with entity feedback
-      success_message = build_generation_success_message(
-        extracted_entities, 
-        existing_contract ? 'regenerated' : 'generated', 
-        contract_type[:type_name]
-      )
+      Rails.logger.info "Direct AI generation completed successfully"
 
       response_data = { 
         success: true, 
-        message: success_message,
-        generation_method: 'ai',
-        contract_type: contract_type[:type_name],
-        extracted_entities: format_entities_for_response(extracted_entities),
+        message: 'AI response generated successfully',
+        generation_method: 'direct_ai',
+        contract_content: ai_response,
         ai_log: ai_log_summary(ai_log)
       }
 
-      response_data[:contract] = contract if contract
-      response_data[:contract_content] = ai_contract_content if !save_contract
+      response_data[:contract] = contract_detail(contract) if contract
 
       return response_data
 
@@ -473,11 +458,11 @@ class Api::V1::ContractsController < ApplicationController
         error_message: e.message
       )
       
-      Rails.logger.error "AI contract generation failed: #{e.message}"
+      Rails.logger.error "Direct AI generation failed: #{e.message}"
       
       return { 
         success: false, 
-        message: "AI contract generation failed: #{e.message}",
+        message: "AI generation failed: #{e.message}",
         error_code: 'AI_GENERATION_ERROR',
         ai_log: ai_log_summary(ai_log)
       }
