@@ -389,6 +389,11 @@ class Api::V1::ContractsController < ApplicationController
       
       # Generate content using enhanced AI service
       ai_service = AiContractGenerationService.new(description)
+      
+      # Extract entities for better user feedback
+      extracted_entities = ai_service.send(:extract_entities_from_description, description)
+      Rails.logger.info "Extracted entities: #{extracted_entities}"
+      
       ai_contract_content = ai_service.generate
 
       if ai_contract_content.blank?
@@ -420,7 +425,7 @@ class Api::V1::ContractsController < ApplicationController
       elsif save_contract
         # Create new contract
         contract = Contract.create!(
-          name: generate_contract_name(description, contract_type[:type_name]),
+          name: generate_contract_name(description, contract_type[:type_name], extracted_entities),
           description: description,
           contract_type: contract_type[:type_id],
           category: contract_type[:category_id],
@@ -440,11 +445,19 @@ class Api::V1::ContractsController < ApplicationController
 
       Rails.logger.info "AI contract generation completed successfully"
 
+      # Build success message with entity feedback
+      success_message = build_generation_success_message(
+        extracted_entities, 
+        existing_contract ? 'regenerated' : 'generated', 
+        contract_type[:type_name]
+      )
+
       response_data = { 
         success: true, 
-        message: existing_contract ? 'Contract regenerated successfully' : 'AI contract generated successfully',
+        message: success_message,
         generation_method: 'ai',
         contract_type: contract_type[:type_name],
+        extracted_entities: format_entities_for_response(extracted_entities),
         ai_log: ai_log_summary(ai_log)
       }
 
@@ -471,14 +484,29 @@ class Api::V1::ContractsController < ApplicationController
     end
   end
 
-  def generate_contract_name(description, contract_type)
-    # Generate a meaningful contract name
-    if description.match?(/nike/i)
-      "Nike #{contract_type} - #{Date.current.strftime('%B %Y')}"
+  def generate_contract_name(description, contract_type, entities = {})
+    name_parts = []
+    
+    # Use extracted companies/brands if available
+    if entities[:companies]&.any?
+      name_parts << entities[:companies].first
+    elsif entities[:parties]&.any?
+      name_parts << entities[:parties].first
+    elsif description.match?(/nike/i)
+      name_parts << "Nike"
     elsif description.match?(/influencer/i)
-      "Influencer #{contract_type} - #{Date.current.strftime('%B %Y')}"
-    elsif description.match?(/service/i)
-      "Service #{contract_type} - #{Date.current.strftime('%B %Y')}"
+      name_parts << "Influencer"
+    end
+    
+    # Add contract type
+    name_parts << contract_type
+    
+    # Add date
+    name_parts << Date.current.strftime('%B %Y')
+    
+    # If we have meaningful parts, join them, otherwise use a default
+    if name_parts.size >= 2
+      name_parts.join(' - ')
     else
       "AI Generated #{contract_type} - #{Date.current.strftime('%B %Y')}"
     end
@@ -578,5 +606,50 @@ class Api::V1::ContractsController < ApplicationController
       created_at: log.created_at,
       updated_at: log.updated_at
     }
+  end
+
+  def build_generation_success_message(entities, action, contract_type)
+    base_message = "#{contract_type} #{action} successfully"
+    
+    entity_parts = []
+    
+    if entities[:parties]&.any?
+      parties = entities[:parties].join(' and ')
+      entity_parts << "between #{parties}"
+    end
+    
+    if entities[:amounts]&.any?
+      amount = entities[:amounts].first
+      entity_parts << "for #{amount}"
+    end
+    
+    if entities[:dates]&.any?
+      date = entities[:dates].first
+      entity_parts << "effective #{date}"
+    end
+    
+    if entities[:companies]&.any?
+      companies = entities[:companies].join(' and ')
+      entity_parts << "involving #{companies}"
+    end
+    
+    if entity_parts.any?
+      "#{base_message} #{entity_parts.join(', ')}. I've automatically extracted and incorporated the key details from your request."
+    else
+      "#{base_message}. The contract has been generated based on your description."
+    end
+  end
+
+  def format_entities_for_response(entities)
+    return {} if entities.blank?
+    
+    formatted = {}
+    
+    entities.each do |key, values|
+      next if values.blank?
+      formatted[key] = values.is_a?(Array) ? values : [values]
+    end
+    
+    formatted
   end
 end
