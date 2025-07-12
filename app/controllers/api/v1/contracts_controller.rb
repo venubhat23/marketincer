@@ -258,6 +258,58 @@ class Api::V1::ContractsController < ApplicationController
     }
   end
 
+  # POST /api/v1/contracts/test_ai
+  def test_ai_service
+    description = params[:description]&.strip
+
+    if description.blank?
+      return render json: { 
+        success: false, 
+        message: 'Description is required for AI testing' 
+      }, status: :bad_request
+    end
+
+    if description.length < 10
+      return render json: { 
+        success: false, 
+        message: 'Description must be at least 10 characters long' 
+      }, status: :bad_request
+    end
+
+    begin
+      Rails.logger.info "Testing AI service with description: #{description.truncate(100)}"
+      
+      # Test the AI service without saving anything
+      ai_service = AiContractGenerationService.new(description)
+      ai_response = ai_service.generate
+
+      if ai_response.present?
+        render json: {
+          success: true,
+          message: 'AI service test successful',
+          content: ai_response,
+          content_length: ai_response.length,
+          generated_at: Time.current
+        }
+      else
+        render json: {
+          success: false,
+          message: 'AI service returned empty response',
+          error_code: 'AI_TEST_EMPTY'
+        }, status: :unprocessable_entity
+      end
+
+    rescue StandardError => e
+      Rails.logger.error "AI service test failed: #{e.message}"
+      
+      render json: {
+        success: false,
+        message: "AI service test failed: #{e.message}",
+        error_code: 'AI_TEST_ERROR'
+      }, status: :internal_server_error
+    end
+  end
+
   private
 
   def set_contract
