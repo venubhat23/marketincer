@@ -8,6 +8,7 @@ Rails.application.routes.draw do
           get :templates
           post :generate, to: 'contracts#generate_ai_contract'
           get :ai_status, to: 'contracts#ai_generation_status'
+          post :test_ai, to: 'contracts#test_ai_service'
         end
 
         member do

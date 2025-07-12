@@ -1,23 +1,41 @@
 class AiContractGenerationService
-  require 'openai'
   require 'net/http'
   require 'json'
+  require 'uri'
   
-  # Primary AI service configuration
+  # Configuration for different AI services
   OPENAI_API_KEY = Rails.application.credentials.openai_api_key || ENV['OPENAI_API_KEY']
-  HUGGINGFACE_API_KEY = Rails.application.credentials.huggingface_api_key || ENV['HUGGINGFACE_API_KEY'] || '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'
+  HUGGINGFACE_API_KEY = Rails.application.credentials.huggingface_api_key || ENV['HUGGINGFACE_API_KEY']
+  GROQ_API_KEY = Rails.application.credentials.groq_api_key || ENV['GROQ_API_KEY']
   
-  # Fallback Hugging Face model URLs
-  HUGGINGFACE_MODELS = [
-    'https://api-inference.huggingface.co/models/microsoft/DialoGPT-large',
-    'https://api-inference.huggingface.co/models/EleutherAI/gpt-neo-2.7B',
-    'https://api-inference.huggingface.co/models/microsoft/DialoGPT-medium',
-    'https://api-inference.huggingface.co/models/gpt2'
+  # Free AI API endpoints
+  FREE_AI_SERVICES = [
+    {
+      name: 'Hugging Face Router',
+      url: 'https://router.huggingface.co/v1/chat/completions',
+      model: 'meta-llama/Llama-3.2-3B-Instruct',
+      api_key: HUGGINGFACE_API_KEY,
+      type: 'openai_compatible'
+    },
+    {
+      name: 'Groq',
+      url: 'https://api.groq.com/openai/v1/chat/completions',
+      model: 'llama-3.2-3b-preview',
+      api_key: GROQ_API_KEY,
+      type: 'openai_compatible'
+    },
+    {
+      name: 'Together AI',
+      url: 'https://api.together.xyz/v1/chat/completions',
+      model: 'meta-llama/Llama-3.2-3B-Instruct-Turbo',
+      api_key: ENV['TOGETHER_API_KEY'],
+      type: 'openai_compatible'
+    }
   ].freeze
 
   def initialize(description)
     @description = description
-    @timeout = 60
+    @timeout = 30
     @max_retries = 2
     @openai_client = setup_openai_client if OPENAI_API_KEY.present?
   end
@@ -26,9 +44,9 @@ class AiContractGenerationService
     retries = 0
 
     begin
-      Rails.logger.info "Direct AI generation started for: #{@description}"
+      Rails.logger.info "AI contract generation started for: #{@description.truncate(100)}"
       
-      # Try OpenAI first
+      # Try OpenAI first if available
       if @openai_client
         Rails.logger.info "Attempting OpenAI generation"
         ai_response = generate_with_openai
@@ -39,34 +57,31 @@ class AiContractGenerationService
         else
           Rails.logger.warn "OpenAI generation failed or empty response"
         end
-      else
-        Rails.logger.warn "OpenAI client not available, API key: #{OPENAI_API_KEY.present? ? 'present' : 'missing'}"
       end
 
-      # Try Hugging Face as fallback
-      Rails.logger.info "Attempting Hugging Face generation"
-      ai_response = generate_with_huggingface
+      # Try free AI services
+      ai_response = generate_with_free_services
       
       if ai_response.present?
-        Rails.logger.info "Hugging Face generation successful: #{ai_response.length} chars"
+        Rails.logger.info "Free AI service generation successful: #{ai_response.length} chars"
         return ai_response
       else
-        Rails.logger.warn "Hugging Face generation failed or empty response"
+        Rails.logger.warn "All free AI services failed"
       end
 
-      # Final fallback
-      Rails.logger.warn "All AI services failed, returning fallback message"
-      return "I'm unable to generate a response at the moment. Please try again later or contact support."
+      # Final fallback - generate a basic contract template
+      Rails.logger.warn "All AI services failed, generating basic template"
+      return generate_basic_contract_template
       
     rescue => e
       retries += 1
       if retries <= @max_retries
         Rails.logger.warn "AI generation attempt #{retries} failed: #{e.message}. Retrying..."
-        sleep(1)
+        sleep(2)
         retry
       else
         Rails.logger.error "AI generation failed after #{@max_retries} attempts: #{e.message}"
-        return "I'm experiencing technical difficulties. Please try again later."
+        return generate_basic_contract_template
       end
     end
   end
@@ -76,13 +91,19 @@ class AiContractGenerationService
   def setup_openai_client
     return nil unless OPENAI_API_KEY.present?
     
-    OpenAI::Client.new(
-      access_token: OPENAI_API_KEY,
-      request_timeout: @timeout
-    )
-  rescue => e
-    Rails.logger.error "Failed to setup OpenAI client: #{e.message}"
-    nil
+    begin
+      require 'openai'
+      OpenAI::Client.new(
+        access_token: OPENAI_API_KEY,
+        request_timeout: @timeout
+      )
+    rescue LoadError
+      Rails.logger.warn "OpenAI gem not available"
+      nil
+    rescue => e
+      Rails.logger.error "Failed to setup OpenAI client: #{e.message}"
+      nil
+    end
   end
 
   def generate_with_openai
@@ -95,11 +116,15 @@ class AiContractGenerationService
         model: 'gpt-3.5-turbo',
         messages: [
           {
+            role: "system",
+            content: "You are a legal contract assistant. Generate a professional contract based on the user's description. Include all necessary legal clauses, terms, and conditions."
+          },
+          {
             role: "user", 
             content: @description
           }
         ],
-        max_tokens: 1500,
+        max_tokens: 2000,
         temperature: 0.7
       }
     )
@@ -118,17 +143,20 @@ class AiContractGenerationService
     return nil
   end
 
-  def generate_with_huggingface
-    HUGGINGFACE_MODELS.each do |model_url|
+  def generate_with_free_services
+    FREE_AI_SERVICES.each do |service|
+      next unless service[:api_key].present?
+      
       begin
-        Rails.logger.info "Trying Hugging Face model: #{model_url}"
-        response = call_huggingface_api(model_url)
+        Rails.logger.info "Trying #{service[:name]} with model #{service[:model]}"
+        response = call_openai_compatible_api(service)
+        
         if response.present?
-          Rails.logger.info "Hugging Face response received: #{response.length} characters"
+          Rails.logger.info "#{service[:name]} response received: #{response.length} characters"
           return response
         end
       rescue => e
-        Rails.logger.warn "Hugging Face model #{model_url} failed: #{e.message}"
+        Rails.logger.warn "#{service[:name]} failed: #{e.message}"
         next
       end
     end
@@ -136,40 +164,140 @@ class AiContractGenerationService
     return nil
   end
 
-  def call_huggingface_api(model_url)
-    uri = URI(model_url)
+  def call_openai_compatible_api(service)
+    uri = URI(service[:url])
     http = Net::HTTP.new(uri.host, uri.port)
     http.use_ssl = true
     http.read_timeout = @timeout
+    http.open_timeout = 10
     
     request = Net::HTTP::Post.new(uri)
-    request['Authorization'] = "Bearer #{HUGGINGFACE_API_KEY}"
+    request['Authorization'] = "Bearer #{service[:api_key]}"
     request['Content-Type'] = 'application/json'
     
+    # Enhanced prompt for better contract generation
+    system_prompt = "You are a professional legal contract assistant. Generate a comprehensive, legally sound contract based on the user's description. Include:\n\n1. Clear parties identification\n2. Detailed terms and conditions\n3. Payment terms (if applicable)\n4. Deliverables and timeline\n5. Termination clauses\n6. Legal compliance statements\n\nFormat the contract professionally with proper sections and headings."
+    
     request.body = {
-      inputs: @description,
-      parameters: {
-        max_length: 500,
-        temperature: 0.7,
-        return_full_text: false
-      }
+      model: service[:model],
+      messages: [
+        {
+          role: "system",
+          content: system_prompt
+        },
+        {
+          role: "user",
+          content: @description
+        }
+      ],
+      max_tokens: 2000,
+      temperature: 0.7,
+      stream: false
     }.to_json
     
     response = http.request(request)
     
     if response.code == '200'
       result = JSON.parse(response.body)
-      if result.is_a?(Array) && result.first.is_a?(Hash)
-        generated_text = result.first['generated_text']
+      
+      if result.dig("choices", 0, "message", "content")
+        generated_text = result["choices"][0]["message"]["content"]
         return generated_text.strip if generated_text.present?
+      else
+        Rails.logger.error "#{service[:name]} API response format unexpected: #{result.inspect}"
       end
     else
-      Rails.logger.error "Hugging Face API error: #{response.code} - #{response.body}"
+      Rails.logger.error "#{service[:name]} API error: #{response.code} - #{response.body}"
     end
     
     return nil
   rescue => e
-    Rails.logger.error "Hugging Face API call failed: #{e.message}"
+    Rails.logger.error "#{service[:name]} API call failed: #{e.message}"
     return nil
+  end
+
+  def generate_basic_contract_template
+    Rails.logger.info "Generating basic contract template as fallback"
+    
+    # Analyze description to determine contract type
+    description_lower = @description.downcase
+    
+    contract_type = case description_lower
+    when /service|freelance|work|project/
+      'Service Agreement'
+    when /nda|non-disclosure|confidential/
+      'Non-Disclosure Agreement'
+    when /employment|job|hire/
+      'Employment Contract'
+    when /influencer|social media|brand|collaboration/
+      'Influencer Collaboration Agreement'
+    when /sponsorship|sponsor/
+      'Sponsorship Agreement'
+    when /gift|product/
+      'Product Gifting Agreement'
+    else
+      'General Agreement'
+    end
+
+    template = <<~CONTRACT
+      # #{contract_type}
+
+      **Date:** #{Date.current.strftime('%B %d, %Y')}
+
+      ## Parties
+      This agreement is entered into between:
+      - **Party A:** [To be specified]
+      - **Party B:** [To be specified]
+
+      ## Description
+      #{@description}
+
+      ## Terms and Conditions
+
+      ### 1. Scope of Work
+      [To be defined based on the specific requirements outlined in the description above]
+
+      ### 2. Duration
+      This agreement shall commence on [Start Date] and continue until [End Date] or until terminated in accordance with the terms herein.
+
+      ### 3. Compensation
+      [Payment terms to be specified based on the nature of the agreement]
+
+      ### 4. Responsibilities
+      **Party A shall:**
+      - [Specify responsibilities]
+
+      **Party B shall:**
+      - [Specify responsibilities]
+
+      ### 5. Confidentiality
+      Both parties agree to maintain the confidentiality of any proprietary information shared during the course of this agreement.
+
+      ### 6. Termination
+      Either party may terminate this agreement with [Notice Period] written notice to the other party.
+
+      ### 7. Governing Law
+      This agreement shall be governed by the laws of [Jurisdiction].
+
+      ### 8. Entire Agreement
+      This document constitutes the entire agreement between the parties and supersedes all prior negotiations, representations, or agreements.
+
+      ## Signatures
+
+      **Party A:**
+      Signature: _________________________
+      Name: [Print Name]
+      Date: _____________
+
+      **Party B:**
+      Signature: _________________________
+      Name: [Print Name]
+      Date: _____________
+
+      ---
+      *This contract template was generated based on your description. Please review and customize all sections marked with brackets [...] to match your specific requirements. It's recommended to have this reviewed by a legal professional before execution.*
+    CONTRACT
+
+    template
   end
 end
