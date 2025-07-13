@@ -113,6 +113,10 @@ class AiContractGenerationService
     if response.dig("choices", 0, "message", "content")
       ai_response = response["choices"][0]["message"]["content"]
       Rails.logger.info "OpenAI API response received: #{ai_response.length} characters"
+      
+      # Post-process the response to remove any footer text
+      ai_response = post_process_contract(ai_response)
+      
       return ai_response.strip
     else
       Rails.logger.error "OpenAI API response format unexpected: #{response.inspect}"
@@ -132,7 +136,7 @@ class AiContractGenerationService
     contract_type = determine_contract_type(@description)
     
     # Generate a contract based on the description and type
-    case contract_type
+    contract_text = case contract_type
     when 'collaboration'
       generate_collaboration_contract
     when 'partnership'
@@ -146,6 +150,9 @@ class AiContractGenerationService
     else
       generate_basic_contract
     end
+    
+    # Apply post-processing to remove any footer text
+    post_process_contract(contract_text)
   end
 
   def build_contract_prompt(description)
@@ -304,12 +311,28 @@ class AiContractGenerationService
     # Try to extract parties, amounts, timeframes, etc.
     # This is a simple extraction - can be enhanced
     
-    # Extract potential party names (proper nouns)
-    words = description.split
+    # Extract potential party names (proper nouns and common patterns)
+    words = description.split(/\s+/)
+    
+    # Look for words that could be names (proper nouns or common company/person names)
     proper_nouns = words.select { |word| word =~ /^[A-Z][a-z]+/ }
     
-    entities[:party1] = proper_nouns[0] if proper_nouns[0]
-    entities[:party2] = proper_nouns[1] if proper_nouns[1]
+    # Also look for common patterns like lowercase company names that might be brand names
+    # Look for words that are likely names even if lowercase
+    potential_names = words.select do |word|
+      # Remove punctuation for checking
+      clean_word = word.gsub(/[^\w]/, '')
+      # Check if it's a proper noun or a common brand/person name pattern
+      clean_word =~ /^[A-Z][a-z]+/ || 
+      clean_word.length > 2 && clean_word =~ /^[a-zA-Z]+$/ && 
+      !%w[the and for with from between collaboration agreement contract generate dollar week day month year video content post].include?(clean_word.downcase)
+    end
+    
+    # Combine and prioritize proper nouns
+    all_candidates = (proper_nouns + potential_names).uniq
+    
+    entities[:party1] = all_candidates[0] if all_candidates[0]
+    entities[:party2] = all_candidates[1] if all_candidates[1]
     
     # Extract dollar amounts
     if description =~ /\$?(\d+(?:,\d{3})*(?:\.\d{2})?)\s*dollars?/i
@@ -396,5 +419,17 @@ class AiContractGenerationService
 
   def generate_nda_contract
     generate_basic_contract.gsub("CONTRACT AGREEMENT", "NON-DISCLOSURE AGREEMENT")
+  end
+
+  private
+
+  def post_process_contract(contract_text)
+    # Remove footer text that mentions contract generation
+    contract_text.gsub(/\*This contract.*generated.*\*$/mi, '')
+               .gsub(/---\s*\*This contract.*generated.*$/mi, '')
+               .gsub(/This contract has been generated based on.*$/mi, '')
+               .gsub(/\*This contract has been generated based on.*\*$/mi, '')
+               .gsub(/^---\s*$\n\n\*This contract.*$/mi, '')
+               .strip
   end
 end
