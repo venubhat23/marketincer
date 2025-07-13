@@ -393,7 +393,15 @@ class Api::V1::ContractsController < ApplicationController
       ai_log.update!(status: AiGenerationLog::STATUS_PROCESSING)
       
       # DIRECT AI GENERATION - Send description directly to AI
-      ai_service = AiContractGenerationService.new(description)
+      # Use simple AI service if specified or if main service is not available
+      if params[:use_simple_ai] == 'true' || ENV['USE_SIMPLE_AI'] == 'true'
+        ai_service = SimpleAiService.new(description)
+        Rails.logger.info "Using SimpleAiService for generation"
+      else
+        ai_service = AiContractGenerationService.new(description)
+        Rails.logger.info "Using AiContractGenerationService for generation"
+      end
+      
       ai_response = ai_service.generate
 
       if ai_response.blank?
