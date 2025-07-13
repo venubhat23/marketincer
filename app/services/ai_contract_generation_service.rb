@@ -1,4 +1,4 @@
-THIS SHOULD BE A LINTER ERRORclass AiContractGenerationService
+class AiContractGenerationService
   require 'openai'
   require 'net/http'
   require 'json'
@@ -149,7 +149,15 @@ THIS SHOULD BE A LINTER ERRORclass AiContractGenerationService
   end
 
   def build_contract_prompt(description)
+    current_date = Date.current.strftime("%B %d, %Y")
+    
     "Please generate a professional contract based on the following description: #{description}. 
+    
+    IMPORTANT INSTRUCTIONS:
+    - Replace any [Date] placeholders with today's date: #{current_date}
+    - Extract party names from the description and use them instead of generic placeholders like [Party 1] and [Party 2]
+    - If you find company names (like 'adidas') or person names (like 'ram') in the description, use them directly
+    - Remove any footer text about how the contract was generated
     
     The contract should include:
     - Proper legal structure with parties, scope, terms, and conditions
