@@ -1,4 +1,4 @@
-class AiContractGenerationService
+THIS SHOULD BE A LINTER ERRORclass AiContractGenerationService
   require 'openai'
   require 'net/http'
   require 'json'
@@ -184,11 +184,12 @@ class AiContractGenerationService
   def generate_collaboration_contract
     # Extract key information from description
     entities = extract_entities(@description)
+    current_date = Date.current.strftime("%B %d, %Y")
     
     <<~CONTRACT
       **COLLABORATION AGREEMENT**
 
-      This Collaboration Agreement ("Agreement") is made and entered into on **[Date]**, by and between:
+      This Collaboration Agreement ("Agreement") is made and entered into on **#{current_date}**, by and between:
 
       **#{entities[:party1] || '[Party 1]'}**, #{entities[:party1_type] || 'having its principal place of business at [Address]'}, hereinafter referred to as the "Brand",
 
@@ -253,10 +254,6 @@ class AiContractGenerationService
       Name: ________________
       Signature: ________________
       Date: ________________
-
-      ---
-
-      This contract has been generated based on your description: "#{@description}"
     CONTRACT
   end
 
