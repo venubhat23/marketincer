@@ -1,4 +1,4 @@
-THIS SHOULD BE A LINTER ERRORclass AiContractGenerationService
+class AiContractGenerationService
   require 'openai'
   require 'net/http'
   require 'json'
@@ -258,10 +258,12 @@ THIS SHOULD BE A LINTER ERRORclass AiContractGenerationService
   end
 
   def generate_basic_contract
+    current_date = Date.current.strftime("%B %d, %Y")
+    
     <<~CONTRACT
       **CONTRACT AGREEMENT**
 
-      This Agreement is made and entered into on **[Date]**, by and between the parties described below.
+      This Agreement is made and entered into on **#{current_date}**, by and between the parties described below.
 
       **Description:** #{@description}
 
@@ -293,10 +295,6 @@ THIS SHOULD BE A LINTER ERRORclass AiContractGenerationService
       Name: ________________
       Signature: ________________
       Date: ________________
-
-      ---
-      
-      This contract has been generated based on your description. Please customize the specific terms, names, and legal provisions as needed for your situation.
     CONTRACT
   end
 
