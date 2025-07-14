@@ -1,0 +1,18 @@
+current directory: /workspace/vendor/bundle/ruby/3.3.0/gems/websocket-driver-0.7.7/ext/websocket-driver
+/usr/bin/ruby3.3 -I/usr/lib/ruby/vendor_ruby extconf.rb
+creating Makefile
+
+current directory: /workspace/vendor/bundle/ruby/3.3.0/gems/websocket-driver-0.7.7/ext/websocket-driver
+make DESTDIR\= sitearchdir\=./.gem.20250714-2539-og8jtz sitelibdir\=./.gem.20250714-2539-og8jtz clean
+
+current directory: /workspace/vendor/bundle/ruby/3.3.0/gems/websocket-driver-0.7.7/ext/websocket-driver
+make DESTDIR\= sitearchdir\=./.gem.20250714-2539-og8jtz sitelibdir\=./.gem.20250714-2539-og8jtz
+compiling websocket_mask.c
+linking shared-object websocket_mask.so
+
+current directory: /workspace/vendor/bundle/ruby/3.3.0/gems/websocket-driver-0.7.7/ext/websocket-driver
+make DESTDIR\= sitearchdir\=./.gem.20250714-2539-og8jtz sitelibdir\=./.gem.20250714-2539-og8jtz install
+/usr/bin/install -c -m 0755 websocket_mask.so ./.gem.20250714-2539-og8jtz
+
+current directory: /workspace/vendor/bundle/ruby/3.3.0/gems/websocket-driver-0.7.7/ext/websocket-driver
+make DESTDIR\= sitearchdir\=./.gem.20250714-2539-og8jtz sitelibdir\=./.gem.20250714-2539-og8jtz clean

@@ -1,0 +1,13 @@
+module Anthropic
+  module Models
+    type cache_control_ephemeral = { type: :ephemeral }
+
+    class CacheControlEphemeral < Anthropic::Internal::Type::BaseModel
+      attr_accessor type: :ephemeral
+
+      def initialize: (?type: :ephemeral) -> void
+
+      def to_hash: -> { type: :ephemeral }
+    end
+  end
+end
