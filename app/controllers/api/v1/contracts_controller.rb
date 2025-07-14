@@ -381,12 +381,18 @@ class Api::V1::ContractsController < ApplicationController
 
   def generate_from_ai(description, existing_contract = nil, save_contract = false)
     # Create AI generation log
-    ai_log = AiGenerationLog.create!(
-      description: description,
-      status: AiGenerationLog::STATUS_PENDING,
-      contract: existing_contract
-    )
-
+    if existing_contract.present?
+      ai_log = AiGenerationLog.create!(
+        description: description,
+        status: AiGenerationLog::STATUS_PENDING,
+        contract: existing_contract
+      )
+    else
+      ai_log = AiGenerationLog.create!(
+        description: description,
+        status: AiGenerationLog::STATUS_PENDING,
+      )
+    end
     Rails.logger.info "Starting direct AI generation with log ID: #{ai_log.id}"
 
     begin
@@ -394,7 +400,7 @@ class Api::V1::ContractsController < ApplicationController
       
       # DIRECT AI GENERATION - Send description directly to AI
       # Use simple AI service if specified or if main service is not available
-      if params[:use_simple_ai] == 'true' || ENV['USE_SIMPLE_AI'] == 'true'
+      if true
         ai_service = SimpleAiService.new(description)
         Rails.logger.info "Using SimpleAiService for generation"
       else
@@ -439,11 +445,18 @@ class Api::V1::ContractsController < ApplicationController
       end
 
       # Update AI log with success
-      ai_log.update!(
-        status: AiGenerationLog::STATUS_COMPLETED,
-        generated_content: ai_response,
-        contract: contract
-      )
+      if contract.present?
+        ai_log.update!(
+          status: AiGenerationLog::STATUS_COMPLETED,
+          generated_content: ai_response,
+          contract: contract
+        )
+      else
+        ai_log.update!(
+          status: AiGenerationLog::STATUS_COMPLETED,
+          generated_content: ai_response
+        )
+      end
 
       Rails.logger.info "Direct AI generation completed successfully"
 

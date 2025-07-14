@@ -3,7 +3,7 @@ class SimpleAiService
   require 'json'
   
   # Configuration for different AI services
-  GROQ_API_KEY = ENV['GROQ_API_KEY']
+  GROQ_API_KEY = "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"
   ANTHROPIC_API_KEY = ENV['ANTHROPIC_API_KEY']
   
   def initialize(description)
@@ -16,7 +16,6 @@ class SimpleAiService
     
     # Try different AI services in order of preference
     ai_response = try_groq_api || try_anthropic_api || generate_with_smart_template
-    
     if ai_response.present?
       Rails.logger.info "Simple AI generation successful: #{ai_response.length} chars"
       return ai_response
@@ -42,7 +41,6 @@ class SimpleAiService
       request = Net::HTTP::Post.new(uri)
       request['Authorization'] = "Bearer #{GROQ_API_KEY}"
       request['Content-Type'] = 'application/json'
-      
       request.body = {
         model: 'llama3-70b-8192',
         messages: [
@@ -55,12 +53,11 @@ class SimpleAiService
             content: build_contract_prompt(@description)
           }
         ],
-        max_tokens: 2000,
+        max_tokens: 5000,
         temperature: 0.7
       }.to_json
       
       response = http.request(request)
-      
       if response.code == '200'
         result = JSON.parse(response.body)
         if result.dig('choices', 0, 'message', 'content')
