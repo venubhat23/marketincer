@@ -53,7 +53,7 @@ class SimpleAiService
             content: build_contract_prompt(@description)
           }
         ],
-        max_tokens: 5000,
+        max_tokens: 2000,
         temperature: 0.7
       }.to_json
       
