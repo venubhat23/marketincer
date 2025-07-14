@@ -1,0 +1,44 @@
+module Anthropic
+  module Models
+    class BetaToolUseBlockParam = Beta::BetaToolUseBlockParam
+
+    module Beta
+      type beta_tool_use_block_param =
+        {
+          id: String,
+          input: top,
+          name: String,
+          type: :tool_use,
+          cache_control: Anthropic::Beta::BetaCacheControlEphemeral?
+        }
+
+      class BetaToolUseBlockParam < Anthropic::Internal::Type::BaseModel
+        attr_accessor id: String
+
+        attr_accessor input: top
+
+        attr_accessor name: String
+
+        attr_accessor type: :tool_use
+
+        attr_accessor cache_control: Anthropic::Beta::BetaCacheControlEphemeral?
+
+        def initialize: (
+          id: String,
+          input: top,
+          name: String,
+          ?cache_control: Anthropic::Beta::BetaCacheControlEphemeral?,
+          ?type: :tool_use
+        ) -> void
+
+        def to_hash: -> {
+          id: String,
+          input: top,
+          name: String,
+          type: :tool_use,
+          cache_control: Anthropic::Beta::BetaCacheControlEphemeral?
+        }
+      end
+    end
+  end
+end
