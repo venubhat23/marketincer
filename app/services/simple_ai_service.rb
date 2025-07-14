@@ -15,7 +15,7 @@ class SimpleAiService
     Rails.logger.info "Simple AI generation started for: #{@description}"
     
     # Try different AI services in order of preference
-    ai_response = try_groq_api || try_anthropic_api || generate_with_smart_template
+    ai_response = try_groq_api || try_anthropic_api
     if ai_response.present?
       Rails.logger.info "Simple AI generation successful: #{ai_response.length} chars"
       return ai_response
@@ -56,7 +56,7 @@ class SimpleAiService
         max_tokens: 2000,
         temperature: 0.7
       }.to_json
-      
+      #test
       response = http.request(request)
       if response.code == '200'
         result = JSON.parse(response.body)
