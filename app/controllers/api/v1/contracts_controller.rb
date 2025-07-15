@@ -109,7 +109,7 @@ class Api::V1::ContractsController < ApplicationController
   end
 
   # POST /api/v1/contracts/generate
-  def generate_ai_contracts
+  def generate_ai_contract
     description = params[:description]&.strip
     template_id = params[:template_id]
     use_template = params[:use_template] == 'true' || params[:use_template] == true
