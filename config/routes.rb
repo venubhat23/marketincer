@@ -73,6 +73,32 @@ Rails.application.routes.draw do
           get 'dashboard'
         end
       end
+
+      # Marketplace Posts routes
+      resources :marketplace_posts do
+        collection do
+          get :my_posts
+          get :search
+          get :statistics
+          get :insights
+          get :recommended
+        end
+        
+        # Nested bids routes
+        resources :bids, only: [:index, :create]
+      end
+
+      # Bids routes
+      resources :bids, only: [:show, :update, :destroy] do
+        member do
+          post :accept
+          post :reject
+        end
+        
+        collection do
+          get :my_bids
+        end
+      end
     end
   end
 
