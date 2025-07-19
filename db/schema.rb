@@ -10,42 +10,57 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.0].define(version: 2025_06_19_020707) do
+ActiveRecord::Schema[8.0].define(version: 2025_01_01_000002) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "pg_catalog.plpgsql"
 
-    create_table "ai_generation_logs", force: :cascade do |t|
-      t.bigint "contract_id"
-      t.text "description", null: false
-      t.text "generated_content"
-      t.integer "status", default: 0
-      t.text "error_message"
-      t.json "ai_response_data", default: {}
-      t.datetime "created_at", null: false
-      t.datetime "updated_at", null: false
-      t.index ["contract_id"], name: "index_ai_generation_logs_on_contract_id"
-      t.index ["created_at"], name: "index_ai_generation_logs_on_created_at"
-      t.index ["status"], name: "index_ai_generation_logs_on_status"
-    end
+  create_table "ai_generation_logs", force: :cascade do |t|
+    t.bigint "contract_id"
+    t.text "description", null: false
+    t.text "generated_content"
+    t.integer "status", default: 0
+    t.text "error_message"
+    t.json "ai_response_data", default: {}
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+    t.index ["contract_id"], name: "index_ai_generation_logs_on_contract_id"
+    t.index ["created_at"], name: "index_ai_generation_logs_on_created_at"
+    t.index ["status"], name: "index_ai_generation_logs_on_status"
+  end
 
-    create_table "contracts", force: :cascade do |t|
-      t.string "name", null: false
-      t.integerger "contract_type", default: 0
-      t.integer "status", default: 0
-      t.integer "category", default: 0
-      t.date "date_created"
-      t.string "action", default: "pending"
-      t.text "content"
-      t.text "description"
-      t.json "metadata", default: {}
-      t.datetime "created_at", null: false
-      t.datetime "updated_at", null: false
-      t.index ["category"], name: "index_contracts_on_category"
-      t.index ["contract_type"], name: "index_contracts_on_contract_type"
-      t.index ["date_created"], name: "index_contracts_on_date_created"
-      t.index ["name"], name: "index_contracts_on_name"
-      t.index ["status"], name: "index_contracts_on_status"
-    end
+  create_table "bids", force: :cascade do |t|
+    t.bigint "marketplace_post_id", null: false
+    t.bigint "user_id", null: false
+    t.decimal "amount", precision: 10, scale: 2, null: false
+    t.string "status", default: "pending"
+    t.text "message"
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+    t.index ["created_at"], name: "index_bids_on_created_at"
+    t.index ["marketplace_post_id", "user_id"], name: "index_bids_on_marketplace_post_id_and_user_id", unique: true
+    t.index ["marketplace_post_id"], name: "index_bids_on_marketplace_post_id"
+    t.index ["status"], name: "index_bids_on_status"
+    t.index ["user_id"], name: "index_bids_on_user_id"
+  end
+
+  create_table "contracts", force: :cascade do |t|
+    t.string "name", null: false
+    t.integer "contract_type", default: 0
+    t.integer "status", default: 0
+    t.integer "category", default: 0
+    t.date "date_created"
+    t.string "action", default: "pending"
+    t.text "content"
+    t.text "description"
+    t.json "metadata", default: {}
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+    t.index ["category"], name: "index_contracts_on_category"
+    t.index ["contract_type"], name: "index_contracts_on_contract_type"
+    t.index ["date_created"], name: "index_contracts_on_date_created"
+    t.index ["name"], name: "index_contracts_on_name"
+    t.index ["status"], name: "index_contracts_on_status"
+  end
 
   create_table "invoices", force: :cascade do |t|
     t.bigint "user_id", null: false
@@ -65,6 +80,32 @@ ActiveRecord::Schema[8.0].define(version: 2025_06_19_020707) do
     t.date "due_date"
     t.string "customer"
     t.index ["user_id"], name: "index_invoices_on_user_id"
+  end
+
+  create_table "marketplace_posts", force: :cascade do |t|
+    t.string "title", null: false
+    t.text "description"
+    t.string "category"
+    t.string "target_audience"
+    t.decimal "budget", precision: 10, scale: 2
+    t.string "location"
+    t.string "platform"
+    t.string "languages"
+    t.date "deadline"
+    t.string "tags"
+    t.string "status", default: "draft"
+    t.string "brand_name"
+    t.string "media_url"
+    t.string "media_type"
+    t.integer "views_count", default: 0
+    t.bigint "user_id", null: false
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+    t.index ["category"], name: "index_marketplace_posts_on_category"
+    t.index ["created_at"], name: "index_marketplace_posts_on_created_at"
+    t.index ["deadline"], name: "index_marketplace_posts_on_deadline"
+    t.index ["status"], name: "index_marketplace_posts_on_status"
+    t.index ["user_id"], name: "index_marketplace_posts_on_user_id"
   end
 
   create_table "posts", force: :cascade do |t|
@@ -157,7 +198,10 @@ ActiveRecord::Schema[8.0].define(version: 2025_06_19_020707) do
   end
 
   add_foreign_key "ai_generation_logs", "contracts"
+  add_foreign_key "bids", "marketplace_posts"
+  add_foreign_key "bids", "users"
   add_foreign_key "invoices", "users"
+  add_foreign_key "marketplace_posts", "users"
   add_foreign_key "posts", "social_pages"
   add_foreign_key "posts", "users"
   add_foreign_key "purchase_orders", "users"

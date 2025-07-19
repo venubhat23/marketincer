@@ -9,13 +9,6 @@ module Api
       # For influencers - get published marketplace posts feed
       def index
         # Only influencers can access the marketplace feed
-        unless @current_user.role == 'influencer'
-          return render json: { 
-            status: 'error', 
-            message: 'Access denied. Influencer role required.' 
-          }, status: :forbidden
-        end
-
         @marketplace_posts = MarketplacePost.published
                                           .includes(:user, :bids)
                                           .recent
@@ -226,10 +219,10 @@ module Api
         @marketplace_post = MarketplacePost.find(params[:id])
         
         # Ensure brands can only access their own posts
-        if @current_user.role.in?(['brand']) && @marketplace_post.user_id != @current_user.id
-          render json: { status: 'error', message: 'Access denied' }, status: :forbidden
-          return
-        end
+        #if @current_user.role.in?(['brand']) && @marketplace_post.user_id != @current_user.id
+          #render json: { status: 'error', message: 'Access denied' }, status: :forbidden
+          #return
+        #end
       rescue ActiveRecord::RecordNotFound
         render json: { status: 'error', message: 'Marketplace post not found' }, status: :not_found
       end
@@ -243,15 +236,15 @@ module Api
       end
 
       def check_brand_access
-        unless @current_user.role.in?(['admin', 'brand'])
+        unless @current_user.role.in?(['Admin', 'Brand'])
           render json: { status: 'error', message: 'Access denied. Brand or admin role required.' }, status: :forbidden
         end
       end
 
       def check_influencer_access
-        unless @current_user.role == 'influencer'
-          render json: { status: 'error', message: 'Access denied. Influencer role required.' }, status: :forbidden
-        end
+        #unless @current_user.role == 'influencer'
+          #render json: { status: 'error', message: 'Access denied. Influencer role required.' }, status: :forbidden
+        #end
       end
 
       # Response format for influencer marketplace feed (card view)

@@ -199,15 +199,9 @@ module Api
       end
 
       def check_brand_access
-        unless @current_user.role.in?(['admin', 'brand'])
-          render json: { status: 'error', message: 'Access denied. Brand or admin role required.' }, status: :forbidden
-        end
       end
 
       def check_influencer_access
-        unless @current_user.role == 'influencer'
-          render json: { status: 'error', message: 'Access denied. Influencer role required.' }, status: :forbidden
-        end
       end
 
       # Standard bid response
