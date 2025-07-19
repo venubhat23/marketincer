@@ -35,6 +35,12 @@ Rails.application.routes.draw do
       post '/linkedin/connect', to: 'linkedin#connect'
       put 'user/update_profile', to: 'users#update_profile'
 
+      # Settings API routes
+      get 'settings', to: 'settings#index'
+      patch 'settings/personal_information', to: 'settings#update_personal_information'
+      patch 'settings/company_details', to: 'settings#update_company_details'
+      patch 'settings/change_password', to: 'settings#change_password'
+
       resources :social_accounts, only: [] do
         collection do
           post :get_pages

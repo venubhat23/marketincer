@@ -7,6 +7,12 @@ class User < ApplicationRecord
   validates :password, presence: true, 
                       length: { minimum: 6 }, 
                       if: :password_required?
+  validates :phone_number, format: { with: /\A[\+]?[1-9][\d\s\-\(\)]{7,}\z/, message: "is invalid" }, 
+                          allow_blank: true
+  validates :avatar_url, format: { with: URI::DEFAULT_PARSER.make_regexp(%w[http https]), message: "must be a valid URL" }, 
+                        allow_blank: true
+  validates :company_website, format: { with: URI::DEFAULT_PARSER.make_regexp(%w[http https]), message: "must be a valid URL" }, 
+                             allow_blank: true
 
   before_create :generate_activation_token
   
