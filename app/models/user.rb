@@ -14,6 +14,8 @@ class User < ApplicationRecord
   has_many :social_accounts  # Add this line to define the relationship
   has_many :invoices
   has_many :purchase_orders
+  has_many :marketplace_posts, dependent: :destroy
+  has_many :bids, dependent: :destroy
   def activation_token_expired?
     activation_sent_at < 24.hours.ago
   end
