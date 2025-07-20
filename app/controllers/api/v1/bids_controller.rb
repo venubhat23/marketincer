@@ -154,13 +154,6 @@ module Api
       # GET /api/v1/bids/my_bids
       # Get current user's bids (influencers only)
       def my_bids
-        unless @current_user.role == 'influencer'
-          return render json: { 
-            status: 'error', 
-            message: 'Access denied. Influencer role required.' 
-          }, status: :forbidden
-        end
-
         @bids = @current_user.bids
                            .includes(:marketplace_post)
                            .recent
