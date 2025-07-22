@@ -34,10 +34,11 @@ Content-Type: application/json
       "first_name": "Oliva",
       "last_name": "Rhye",
       "email": "oliva@untitledui.com",
-      "phone_number": "+1 (555) 000-0000",
-      "bio": "Digital marketing specialist with 5+ years of experience in growth strategies.",
-      "avatar_url": "https://example.com/avatars/oliva.jpg"
-    },
+                    "phone_number": "+1 (555) 000-0000",
+              "bio": "Digital marketing specialist with 5+ years of experience in growth strategies.",
+              "avatar_url": "https://example.com/avatars/oliva.jpg",
+              "timezone": "Asia/Kolkata"
+            },
     "company_details": {
       "name": "Untitled UI",
       "gst_name": "Untitled UI Private Limited",
@@ -140,7 +141,91 @@ Content-Type: application/json
 }
 ```
 
-### 4. PATCH /api/v1/settings/change_password
+### 4. GET /api/v1/settings/timezones
+Get available timezones for dropdown selection.
+
+**Headers:**
+```
+Authorization: Bearer <jwt_token>
+Content-Type: application/json
+```
+
+**Response (200 OK):**
+```json
+{
+  "status": "success",
+  "data": [
+    {
+      "value": "Asia/Kolkata",
+      "label": "India Standard Time (IST)",
+      "offset": "+05:30"
+    },
+    {
+      "value": "America/New_York",
+      "label": "Eastern Time (ET)",
+      "offset": "-05:00"
+    },
+    {
+      "value": "Europe/London",
+      "label": "Greenwich Mean Time (GMT)",
+      "offset": "+00:00"
+    }
+  ]
+}
+```
+
+### 5. PATCH /api/v1/settings/timezone
+Update user's timezone preference.
+
+**Headers:**
+```
+Authorization: Bearer <jwt_token>
+Content-Type: application/json
+```
+
+**Request Body:**
+```json
+{
+  "timezone": "Asia/Kolkata"
+}
+```
+
+**Response (200 OK):**
+```json
+{
+  "status": "success",
+  "message": "Timezone updated successfully",
+  "data": {
+    "timezone": "Asia/Kolkata"
+  }
+}
+```
+
+### 6. DELETE /api/v1/settings/delete_account
+Delete user account (soft delete).
+
+**Headers:**
+```
+Authorization: Bearer <jwt_token>
+Content-Type: application/json
+```
+
+**Request Body:**
+```json
+{
+  "password": "user_current_password"
+}
+```
+
+**Response (200 OK):**
+```json
+{
+  "status": "success",
+  "message": "Account deleted successfully"
+}
+```
+
+### 7. PATCH /api/v1/settings/change_password
 Change user's password.
 
 **Headers:**
@@ -228,6 +313,33 @@ curl -X PATCH http://localhost:3000/api/v1/settings/company_details \
   }'
 ```
 
+### Get Available Timezones
+```bash
+curl -X GET http://localhost:3000/api/v1/settings/timezones \
+  -H "Authorization: Bearer <your_jwt_token>" \
+  -H "Content-Type: application/json"
+```
+
+### Update Timezone
+```bash
+curl -X PATCH http://localhost:3000/api/v1/settings/timezone \
+  -H "Authorization: Bearer <your_jwt_token>" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "timezone": "Asia/Kolkata"
+  }'
+```
+
+### Delete Account
+```bash
+curl -X DELETE http://localhost:3000/api/v1/settings/delete_account \
+  -H "Authorization: Bearer <your_jwt_token>" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "password": "user_current_password"
+  }'
+```
+
 ### Change Password
 ```bash
 curl -X PATCH http://localhost:3000/api/v1/settings/change_password \
@@ -251,6 +363,7 @@ This will add the following columns to the users table:
 - `bio` (text)
 - `avatar_url` (string)
 - `company_name` (string)
+- `timezone` (string, default: 'Asia/Kolkata')
 
 ## Sample Data
 
