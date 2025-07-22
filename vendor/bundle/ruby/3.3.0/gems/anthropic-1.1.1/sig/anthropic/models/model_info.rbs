@@ -1,0 +1,30 @@
+module Anthropic
+  module Models
+    type model_info =
+      { id: String, created_at: Time, display_name: String, type: :model }
+
+    class ModelInfo < Anthropic::Internal::Type::BaseModel
+      attr_accessor id: String
+
+      attr_accessor created_at: Time
+
+      attr_accessor display_name: String
+
+      attr_accessor type: :model
+
+      def initialize: (
+        id: String,
+        created_at: Time,
+        display_name: String,
+        ?type: :model
+      ) -> void
+
+      def to_hash: -> {
+        id: String,
+        created_at: Time,
+        display_name: String,
+        type: :model
+      }
+    end
+  end
+end
