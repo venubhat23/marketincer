@@ -28,8 +28,22 @@ class User < ApplicationRecord
   has_many :purchase_orders
   has_many :marketplace_posts, dependent: :destroy
   has_many :bids, dependent: :destroy
+  has_many :short_urls, dependent: :destroy
+
   def activation_token_expired?
     activation_sent_at < 24.hours.ago
+  end
+
+  def total_short_urls
+    short_urls.count
+  end
+
+  def total_clicks
+    short_urls.sum(:clicks)
+  end
+
+  def urls_created_this_month
+    short_urls.where(created_at: 1.month.ago.beginning_of_month..Time.current).count
   end
   
   private

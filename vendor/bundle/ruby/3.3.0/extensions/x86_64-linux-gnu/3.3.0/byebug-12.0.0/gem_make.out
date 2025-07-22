@@ -1,0 +1,22 @@
+current directory: /workspace/vendor/bundle/ruby/3.3.0/gems/byebug-12.0.0/ext/byebug
+/usr/bin/ruby3.3 -I/usr/lib/ruby/vendor_ruby extconf.rb
+creating Makefile
+
+current directory: /workspace/vendor/bundle/ruby/3.3.0/gems/byebug-12.0.0/ext/byebug
+make DESTDIR\= sitearchdir\=./.gem.20250722-9075-uzmmhy sitelibdir\=./.gem.20250722-9075-uzmmhy clean
+
+current directory: /workspace/vendor/bundle/ruby/3.3.0/gems/byebug-12.0.0/ext/byebug
+make DESTDIR\= sitearchdir\=./.gem.20250722-9075-uzmmhy sitelibdir\=./.gem.20250722-9075-uzmmhy
+compiling breakpoint.c
+compiling byebug.c
+compiling context.c
+compiling locker.c
+compiling threads.c
+linking shared-object byebug/byebug.so
+
+current directory: /workspace/vendor/bundle/ruby/3.3.0/gems/byebug-12.0.0/ext/byebug
+make DESTDIR\= sitearchdir\=./.gem.20250722-9075-uzmmhy sitelibdir\=./.gem.20250722-9075-uzmmhy install
+/usr/bin/install -c -m 0755 byebug.so ./.gem.20250722-9075-uzmmhy/byebug
+
+current directory: /workspace/vendor/bundle/ruby/3.3.0/gems/byebug-12.0.0/ext/byebug
+make DESTDIR\= sitearchdir\=./.gem.20250722-9075-uzmmhy sitelibdir\=./.gem.20250722-9075-uzmmhy clean
