@@ -13,6 +13,11 @@ class ShortUrl < ApplicationRecord
   scope :by_user, ->(user_id) { where(user_id: user_id) }
   scope :recent, -> { order(created_at: :desc) }
 
+  # Find existing active short URL for a user and long URL
+  scope :find_duplicate, ->(user_id, long_url) { 
+    where(user_id: user_id, long_url: long_url, active: true) 
+  }
+
   def short_url
     "https://short.ly/#{short_code}"
   end

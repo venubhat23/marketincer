@@ -4,6 +4,30 @@ class Api::V1::ShortUrlsController < ApplicationController
 
   # POST /api/v1/shorten
   def create
+    # First, check if user already has a short URL for this long URL
+    normalized_url = normalize_url(short_url_params[:long_url])
+    existing_short_url = ShortUrl.find_duplicate(current_user.id, normalized_url).first
+    
+    if existing_short_url
+      # Return existing short URL with updated metadata
+      existing_short_url.update(
+        title: short_url_params[:title],
+        description: short_url_params[:description]
+      ) if short_url_params[:title].present? || short_url_params[:description].present?
+      
+      render json: {
+        short_url: existing_short_url.short_url,
+        long_url: existing_short_url.long_url,
+        short_code: existing_short_url.short_code,
+        clicks: existing_short_url.clicks,
+        message: "URL already exists - returning existing short URL",
+        existing: true,
+        created_at: existing_short_url.created_at.iso8601
+      }, status: :ok
+      return
+    end
+
+    # Create new short URL if none exists
     @short_url = current_user.short_urls.build(short_url_params)
 
     if @short_url.save
@@ -13,6 +37,7 @@ class Api::V1::ShortUrlsController < ApplicationController
         short_code: @short_url.short_code,
         clicks: @short_url.clicks,
         message: "URL shortened successfully",
+        existing: false,
         created_at: @short_url.created_at.iso8601
       }, status: :created
     else
@@ -166,5 +191,17 @@ class Api::V1::ShortUrlsController < ApplicationController
 
   def current_user
     @current_user
+  end
+
+  private
+
+  def normalize_url(url)
+    return nil unless url.present?
+    
+    # Add protocol if missing
+    url = "https://#{url}" unless url.match?(/\Ahttps?:\/\//)
+    
+    # Remove trailing slash
+    url.chomp('/')
   end
 end
