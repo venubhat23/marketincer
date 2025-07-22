@@ -3,6 +3,9 @@ Rails.application.routes.draw do
 
   namespace :api do
     namespace :v1 do
+      # Instagram Influencer Discovery API (Public - No Authentication)
+      post 'instagram/discover', to: 'instagram_influencer_discovery#discover'
+
       resources :contracts do
         collection do
           get :templates
