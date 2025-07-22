@@ -37,9 +37,12 @@ Rails.application.routes.draw do
 
       # Settings API routes
       get 'settings', to: 'settings#index'
+      get 'settings/timezones', to: 'settings#timezones'
       patch 'settings/personal_information', to: 'settings#update_personal_information'
       patch 'settings/company_details', to: 'settings#update_company_details'
       patch 'settings/change_password', to: 'settings#change_password'
+      patch 'settings/timezone', to: 'settings#update_timezone'
+      delete 'settings/delete_account', to: 'settings#delete_account'
 
       resources :social_accounts, only: [] do
         collection do

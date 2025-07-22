@@ -13,6 +13,12 @@ class User < ApplicationRecord
                         allow_blank: true
   validates :company_website, format: { with: URI::DEFAULT_PARSER.make_regexp(%w[http https]), message: "must be a valid URL" }, 
                              allow_blank: true
+  validates :timezone, presence: true, inclusion: { 
+    in: ['Asia/Kolkata', 'America/New_York', 'America/Los_Angeles', 'Europe/London', 'Europe/Berlin', 
+         'Asia/Tokyo', 'Asia/Shanghai', 'Australia/Sydney', 'Asia/Dubai', 'Asia/Singapore', 
+         'Europe/Paris', 'America/Chicago', 'America/Denver', 'Pacific/Auckland', 'Africa/Cairo'],
+    message: "is not a valid timezone" 
+  }
 
   before_create :generate_activation_token
   

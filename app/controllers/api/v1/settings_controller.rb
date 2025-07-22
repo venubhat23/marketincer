@@ -14,7 +14,8 @@ module Api
               email: @current_user.email,
               phone_number: @current_user.phone_number,
               bio: @current_user.bio,
-              avatar_url: @current_user.avatar_url
+              avatar_url: @current_user.avatar_url,
+              timezone: @current_user.timezone
             },
             company_details: {
               name: @current_user.company_name,
@@ -26,6 +27,51 @@ module Api
             }
           }
         }, status: :ok
+      end
+
+      # GET /api/v1/settings/timezones - Get available timezones
+      def timezones
+        timezones = [
+          { value: 'Asia/Kolkata', label: 'India Standard Time (IST)', offset: '+05:30' },
+          { value: 'America/New_York', label: 'Eastern Time (ET)', offset: '-05:00' },
+          { value: 'America/Los_Angeles', label: 'Pacific Time (PT)', offset: '-08:00' },
+          { value: 'Europe/London', label: 'Greenwich Mean Time (GMT)', offset: '+00:00' },
+          { value: 'Europe/Berlin', label: 'Central European Time (CET)', offset: '+01:00' },
+          { value: 'Asia/Tokyo', label: 'Japan Standard Time (JST)', offset: '+09:00' },
+          { value: 'Asia/Shanghai', label: 'China Standard Time (CST)', offset: '+08:00' },
+          { value: 'Australia/Sydney', label: 'Australian Eastern Time (AET)', offset: '+10:00' },
+          { value: 'Asia/Dubai', label: 'Gulf Standard Time (GST)', offset: '+04:00' },
+          { value: 'Asia/Singapore', label: 'Singapore Standard Time (SGT)', offset: '+08:00' },
+          { value: 'Europe/Paris', label: 'Central European Time (CET)', offset: '+01:00' },
+          { value: 'America/Chicago', label: 'Central Time (CT)', offset: '-06:00' },
+          { value: 'America/Denver', label: 'Mountain Time (MT)', offset: '-07:00' },
+          { value: 'Pacific/Auckland', label: 'New Zealand Standard Time (NZST)', offset: '+12:00' },
+          { value: 'Africa/Cairo', label: 'Eastern European Time (EET)', offset: '+02:00' }
+        ]
+
+        render json: {
+          status: "success",
+          data: timezones
+        }, status: :ok
+      end
+
+      # PATCH /api/v1/settings/timezone - Update timezone
+      def update_timezone
+        if @current_user.update(timezone_params)
+          render json: {
+            status: "success",
+            message: "Timezone updated successfully",
+            data: {
+              timezone: @current_user.timezone
+            }
+          }, status: :ok
+        else
+          render json: {
+            status: "error",
+            message: "Failed to update timezone",
+            errors: @current_user.errors.full_messages
+          }, status: :unprocessable_entity
+        end
       end
 
       # PATCH /api/v1/settings/personal_information - Update personal info
@@ -40,7 +86,8 @@ module Api
               email: @current_user.email,
               phone_number: @current_user.phone_number,
               bio: @current_user.bio,
-              avatar_url: @current_user.avatar_url
+              avatar_url: @current_user.avatar_url,
+              timezone: @current_user.timezone
             }
           }, status: :ok
         else
@@ -115,6 +162,39 @@ module Api
         end
       end
 
+      # DELETE /api/v1/settings/delete_account - Delete user account
+      def delete_account
+        unless @current_user.authenticate(delete_account_params[:password])
+          return render json: {
+            status: "error",
+            message: "Password is incorrect"
+          }, status: :unauthorized
+        end
+
+        begin
+          # Soft delete by deactivating the account instead of hard delete
+          # to preserve data integrity for related records
+          if @current_user.update(activated: false, email: "deleted_#{Time.current.to_i}_#{@current_user.email}")
+            render json: {
+              status: "success",
+              message: "Account deleted successfully"
+            }, status: :ok
+          else
+            render json: {
+              status: "error",
+              message: "Failed to delete account",
+              errors: @current_user.errors.full_messages
+            }, status: :unprocessable_entity
+          end
+        rescue => e
+          render json: {
+            status: "error",
+            message: "Failed to delete account",
+            errors: [e.message]
+          }, status: :internal_server_error
+        end
+      end
+
       private
 
       def personal_information_params
@@ -124,7 +204,8 @@ module Api
           :email, 
           :phone_number, 
           :bio,
-          :avatar_url
+          :avatar_url,
+          :timezone
         )
       end
 
@@ -148,6 +229,14 @@ module Api
 
       def password_params
         params.permit(:current_password, :new_password, :confirm_password)
+      end
+
+      def timezone_params
+        params.permit(:timezone)
+      end
+
+      def delete_account_params
+        params.permit(:password)
       end
     end
   end
