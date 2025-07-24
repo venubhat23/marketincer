@@ -64,7 +64,7 @@ Create a new shortened URL.
 
 ```json
 {
-  "short_url": "https://short.ly/abc123",
+  "short_url": "https://app.marketincer.com/r/abc123",
   "long_url": "https://example.com/very-long-url-path",
   "short_code": "abc123",
   "clicks": 0,
@@ -109,7 +109,7 @@ Retrieve all URLs created by a specific user with pagination.
     {
       "id": 1,
       "long_url": "https://example.com/page1",
-      "short_url": "https://short.ly/abc123",
+      "short_url": "https://app.marketincer.com/r/abc123",
       "short_code": "abc123",
       "clicks": 45,
       "title": "Example Page 1",
@@ -120,7 +120,7 @@ Retrieve all URLs created by a specific user with pagination.
     {
       "id": 2,
       "long_url": "https://example.com/page2",
-      "short_url": "https://short.ly/def456",
+      "short_url": "https://app.marketincer.com/r/def456",
       "short_code": "def456",
       "clicks": 23,
       "title": "Example Page 2",
@@ -146,7 +146,7 @@ Get detailed information about a specific short URL including basic analytics.
 {
   "id": 1,
   "long_url": "https://example.com/page1",
-  "short_url": "https://short.ly/abc123",
+  "short_url": "https://app.marketincer.com/r/abc123",
   "short_code": "abc123",
   "clicks": 45,
   "title": "Example Page 1",
@@ -202,7 +202,7 @@ Update the title, description, or active status of a short URL.
 {
   "id": 1,
   "long_url": "https://example.com/page1",
-  "short_url": "https://short.ly/abc123",
+  "short_url": "https://app.marketincer.com/r/abc123",
   "short_code": "abc123",
   "clicks": 45,
   "title": "Updated Title",
@@ -249,7 +249,7 @@ Get user dashboard with summary statistics and recent activity.
     {
       "id": 1,
       "long_url": "https://example.com/recent1",
-      "short_url": "https://short.ly/xyz789",
+      "short_url": "https://app.marketincer.com/r/xyz789",
       "clicks": 12,
       "created_at": "2025-07-22T14:00:00Z"
     }
@@ -258,7 +258,7 @@ Get user dashboard with summary statistics and recent activity.
     {
       "id": 2,
       "long_url": "https://example.com/popular",
-      "short_url": "https://short.ly/pop123",
+      "short_url": "https://app.marketincer.com/r/pop123",
       "clicks": 150,
       "created_at": "2025-07-20T10:00:00Z"
     }
@@ -279,7 +279,7 @@ Get detailed analytics for a specific short URL.
 ```json
 {
   "short_code": "abc123",
-  "short_url": "https://short.ly/abc123",
+  "short_url": "https://app.marketincer.com/r/abc123",
   "long_url": "https://example.com/page1",
   "title": "Example Page 1",
   "description": "First example page",
@@ -352,7 +352,7 @@ Get aggregated analytics for all user's URLs.
   "top_performing_urls": [
     {
       "short_code": "top123",
-      "short_url": "https://short.ly/top123",
+      "short_url": "https://app.marketincer.com/r/top123",
       "long_url": "https://example.com/popular",
       "clicks": 200,
       "created_at": "2025-07-20T10:00:00Z"
@@ -431,7 +431,7 @@ Preview URL information without redirecting.
 ```json
 {
   "short_code": "abc123",
-  "short_url": "https://short.ly/abc123",
+  "short_url": "https://app.marketincer.com/r/abc123",
   "long_url": "https://example.com/page1",
   "title": "Example Page 1",
   "description": "This link will redirect you to: https://example.com/page1",
@@ -454,13 +454,13 @@ Get public information about a short URL including QR code.
 ```json
 {
   "short_code": "abc123",
-  "short_url": "https://short.ly/abc123",
+  "short_url": "https://app.marketincer.com/r/abc123",
   "long_url": "https://example.com/page1",
   "title": "Example Page 1",
   "description": "First example page",
   "clicks": 45,
   "created_at": "2025-07-22T10:00:00Z",
-  "qr_code_url": "https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=https%3A//short.ly/abc123"
+  "qr_code_url": "https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=https%3A//app.marketincer.com/r/abc123"
 }
 ```
 
@@ -545,12 +545,12 @@ console.log(data.urls);
 
 Simply visit the short URL in a browser:
 ```
-https://short.ly/abc123
+https://app.marketincer.com/r/abc123
 ```
 
 Or programmatically:
 ```javascript
-window.location.href = 'https://short.ly/abc123';
+window.location.href = 'https://app.marketincer.com/r/abc123';
 ```
 
 ---

@@ -219,7 +219,7 @@ curl -X POST https://api.example.com/api/v1/shorten \
 ### Response
 ```json
 {
-  "short_url": "https://short.ly/abc123",
+  "short_url": "https://app.marketincer.com/r/abc123",
   "long_url": "https://example.com/very-long-url",
   "short_code": "abc123",
   "clicks": 0,
@@ -231,13 +231,13 @@ curl -X POST https://api.example.com/api/v1/shorten \
 ### Using the Short URL
 ```bash
 # Direct redirect
-curl -L https://short.ly/abc123
+curl -L https://app.marketincer.com/r/abc123
 
 # Preview (safe)
-curl https://short.ly/abc123/preview
+curl https://app.marketincer.com/r/abc123/preview
 
 # Get info + QR code
-curl https://short.ly/abc123/info
+curl https://app.marketincer.com/r/abc123/info
 ```
 
 ---
