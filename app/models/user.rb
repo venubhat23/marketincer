@@ -13,6 +13,12 @@ class User < ApplicationRecord
                         allow_blank: true
   validates :company_website, format: { with: URI::DEFAULT_PARSER.make_regexp(%w[http https]), message: "must be a valid URL" }, 
                              allow_blank: true
+  validates :timezone, presence: true, inclusion: { 
+    in: ['Asia/Kolkata', 'America/New_York', 'America/Los_Angeles', 'Europe/London', 'Europe/Berlin', 
+         'Asia/Tokyo', 'Asia/Shanghai', 'Australia/Sydney', 'Asia/Dubai', 'Asia/Singapore', 
+         'Europe/Paris', 'America/Chicago', 'America/Denver', 'Pacific/Auckland', 'Africa/Cairo'],
+    message: "is not a valid timezone" 
+  }
 
   before_create :generate_activation_token
   
@@ -22,8 +28,22 @@ class User < ApplicationRecord
   has_many :purchase_orders
   has_many :marketplace_posts, dependent: :destroy
   has_many :bids, dependent: :destroy
+  has_many :short_urls, dependent: :destroy
+
   def activation_token_expired?
     activation_sent_at < 24.hours.ago
+  end
+
+  def total_short_urls
+    short_urls.count
+  end
+
+  def total_clicks
+    short_urls.sum(:clicks)
+  end
+
+  def urls_created_this_month
+    short_urls.where(created_at: 1.month.ago.beginning_of_month..Time.current).count
   end
   
   private
