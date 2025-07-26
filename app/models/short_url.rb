@@ -14,7 +14,7 @@ class ShortUrl < ApplicationRecord
   scope :recent, -> { order(created_at: :desc) }
 
   def short_url
-    "https://app.marketincer.com/r/#{short_code}"
+    "https://api.marketincer.com/r/#{short_code}"
   end
 
   def increment_clicks!
