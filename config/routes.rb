@@ -37,9 +37,12 @@ Rails.application.routes.draw do
 
       # Settings API routes
       get 'settings', to: 'settings#index'
+      get 'settings/timezones', to: 'settings#timezones'
       patch 'settings/personal_information', to: 'settings#update_personal_information'
       patch 'settings/company_details', to: 'settings#update_company_details'
       patch 'settings/change_password', to: 'settings#change_password'
+      patch 'settings/timezone', to: 'settings#update_timezone'
+      delete 'settings/delete_account', to: 'settings#delete_account'
 
       resources :social_accounts, only: [] do
         collection do
@@ -105,8 +108,29 @@ Rails.application.routes.draw do
           get :my_bids
         end
       end
+
+      # URL Shortener API routes
+      post 'shorten', to: 'short_urls#create'
+      get 'users/:user_id/urls', to: 'short_urls#index', as: 'user_urls'
+      get 'users/:user_id/dashboard', to: 'short_urls#dashboard', as: 'user_dashboard'
+      
+      resources :short_urls, only: [:show, :update, :destroy] do
+        collection do
+          get :dashboard, to: 'short_urls#dashboard'
+        end
+      end
+
+      # Analytics API routes
+      get 'analytics/summary', to: 'analytics#summary'
+      get 'analytics/:short_code', to: 'analytics#show', as: 'analytics'
+      get 'analytics/:short_code/export', to: 'analytics#export', as: 'analytics_export'
     end
   end
+
+  # URL Redirect routes (outside API namespace for clean URLs)
+  get '/r/:short_code', to: 'redirects#show', as: 'redirect'
+  get '/r/:short_code/preview', to: 'redirects#preview', as: 'redirect_preview'
+  get '/r/:short_code/info', to: 'redirects#info', as: 'redirect_info'
 
   # ✅ Handle OPTIONS requests for CORS preflight
   match "*path", to: "application#preflight", via: [:options]
