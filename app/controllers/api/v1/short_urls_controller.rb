@@ -23,6 +23,37 @@ class Api::V1::ShortUrlsController < ApplicationController
     end
   end
 
+  # POST /api/v1/short_links
+  def create_enhanced
+    @short_url = current_user.short_urls.build(enhanced_short_url_params)
+
+    if @short_url.save
+      render json: {
+        short_link: @short_url.short_url,
+        original_url: @short_url.long_url,
+        final_url: @short_url.final_url,
+        title: @short_url.title,
+        custom_back_half: @short_url.custom_back_half,
+        enable_utm: @short_url.enable_utm,
+        utm_params: @short_url.utm_params,
+        enable_qr: @short_url.enable_qr,
+        qr_code_url: @short_url.qr_code_url,
+        created_at: @short_url.created_at.iso8601
+      }, status: :created
+    else
+      # Check for custom back-half conflict
+      if @short_url.errors[:custom_back_half].include?("is already taken")
+        render json: {
+          error: "The custom back-half '#{@short_url.custom_back_half}' is already taken."
+        }, status: :conflict
+      else
+        render json: {
+          error: @short_url.errors.full_messages.first || "Destination URL is required."
+        }, status: :bad_request
+      end
+    end
+  end
+
   # GET /api/v1/users/:user_id/urls
   def index
     @short_urls = current_user.short_urls.active.recent.page(params[:page]).per(20)
@@ -37,11 +68,17 @@ class Api::V1::ShortUrlsController < ApplicationController
         {
           id: short_url.id,
           long_url: short_url.long_url,
+          final_url: short_url.final_url,
           short_url: short_url.short_url,
           short_code: short_url.short_code,
           clicks: short_url.clicks,
           title: short_url.title,
           description: short_url.description,
+          custom_back_half: short_url.custom_back_half,
+          enable_utm: short_url.enable_utm,
+          utm_params: short_url.utm_params,
+          enable_qr: short_url.enable_qr,
+          qr_code_url: short_url.qr_code_url,
           active: short_url.active,
           created_at: short_url.created_at.iso8601
         }
@@ -54,11 +91,17 @@ class Api::V1::ShortUrlsController < ApplicationController
     render json: {
       id: @short_url.id,
       long_url: @short_url.long_url,
+      final_url: @short_url.final_url,
       short_url: @short_url.short_url,
       short_code: @short_url.short_code,
       clicks: @short_url.clicks,
       title: @short_url.title,
       description: @short_url.description,
+      custom_back_half: @short_url.custom_back_half,
+      enable_utm: @short_url.enable_utm,
+      utm_params: @short_url.utm_params,
+      enable_qr: @short_url.enable_qr,
+      qr_code_url: @short_url.qr_code_url,
       active: @short_url.active,
       created_at: @short_url.created_at.iso8601,
       analytics: {
@@ -78,11 +121,17 @@ class Api::V1::ShortUrlsController < ApplicationController
       render json: {
         id: @short_url.id,
         long_url: @short_url.long_url,
+        final_url: @short_url.final_url,
         short_url: @short_url.short_url,
         short_code: @short_url.short_code,
         clicks: @short_url.clicks,
         title: @short_url.title,
         description: @short_url.description,
+        custom_back_half: @short_url.custom_back_half,
+        enable_utm: @short_url.enable_utm,
+        utm_params: @short_url.utm_params,
+        enable_qr: @short_url.enable_qr,
+        qr_code_url: @short_url.qr_code_url,
         active: @short_url.active,
         message: "Short URL updated successfully",
         updated_at: @short_url.updated_at.iso8601
@@ -131,6 +180,25 @@ class Api::V1::ShortUrlsController < ApplicationController
     }
   end
 
+  # GET /api/v1/short_links/:code/qr
+  def qr_code
+    @short_url = ShortUrl.find_by!(short_code: params[:code])
+    
+    if @short_url.enable_qr? && @short_url.qr_code_url.present?
+      qr_path = Rails.root.join('public', 'qr', "#{@short_url.short_code}.png")
+      
+      if File.exist?(qr_path)
+        send_file qr_path, type: 'image/png', disposition: 'inline'
+      else
+        render json: { error: "QR code not found" }, status: :not_found
+      end
+    else
+      render json: { error: "QR code not enabled for this link" }, status: :not_found
+    end
+  rescue ActiveRecord::RecordNotFound
+    render json: { error: "Short URL not found" }, status: :not_found
+  end
+
   private
 
   def set_short_url
@@ -143,8 +211,22 @@ class Api::V1::ShortUrlsController < ApplicationController
     params.require(:short_url).permit(:long_url, :title, :description)
   end
 
+  def enhanced_short_url_params
+    params.permit(
+      :destination_url, :title, :custom_back_half, :enable_utm,
+      :utm_source, :utm_medium, :utm_campaign, :utm_term, :utm_content,
+      :enable_qr
+    ).tap do |permitted_params|
+      # Map destination_url to long_url for compatibility
+      permitted_params[:long_url] = permitted_params.delete(:destination_url) if permitted_params[:destination_url]
+    end
+  end
+
   def update_params
-    params.require(:short_url).permit(:title, :description, :active)
+    params.require(:short_url).permit(
+      :title, :description, :active, :enable_utm, :utm_source, 
+      :utm_medium, :utm_campaign, :utm_term, :utm_content, :enable_qr
+    )
   end
 
 

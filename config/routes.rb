@@ -111,6 +111,8 @@ Rails.application.routes.draw do
 
       # URL Shortener API routes
       post 'shorten', to: 'short_urls#create'
+      post 'short_links', to: 'short_urls#create_enhanced'  # New enhanced API
+      get 'short_links/:code/qr', to: 'short_urls#qr_code', as: 'qr_code'  # QR code endpoint
       get 'users/:user_id/urls', to: 'short_urls#index', as: 'user_urls'
       get 'users/:user_id/dashboard', to: 'short_urls#dashboard', as: 'user_dashboard'
       
