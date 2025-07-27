@@ -10,8 +10,9 @@ class RedirectsController < ApplicationController
       # Increment click counter
       @short_url.increment_clicks!
 
-      # Redirect to the original URL
-      redirect_to @short_url.long_url, status: :moved_permanently, allow_other_host: true
+      # Redirect to the final URL (with UTM parameters if enabled)
+      redirect_url = @short_url.final_url.present? ? @short_url.final_url : @short_url.long_url
+      redirect_to redirect_url, status: :moved_permanently, allow_other_host: true
     else
       render json: { 
         error: "Short URL not found or inactive",

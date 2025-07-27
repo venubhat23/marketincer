@@ -45,6 +45,10 @@ gem 'ougai'  # Modern structured logging
 gem 'ruby-openai'  # For OpenAI GPT-3.5/GPT-4 integration
 gem 'anthropic'    # For Claude AI integration (backup)
 
+# QR Code generation
+gem 'rqrcode'      # For QR code generation
+gem 'chunky_png'   # For PNG image generation (required by rqrcode)
+
 # Deploy this application anywhere as a Docker container [https://kamal-deploy.org]
 gem "kamal", require: false
 
