@@ -122,6 +122,13 @@ Rails.application.routes.draw do
         end
       end
 
+      # Test routes (bypasses authentication for demo)
+      namespace :test do
+        post 'shorten', to: 'test_short_urls#create'
+        get 'users/:user_id/urls', to: 'test_short_urls#index', as: 'test_user_urls'
+        get 'users/:user_id/dashboard', to: 'test_short_urls#dashboard', as: 'test_user_dashboard'
+      end
+
       # Analytics API routes
       get 'analytics/summary', to: 'analytics#summary'
       get 'analytics/:short_code', to: 'analytics#show', as: 'analytics'
