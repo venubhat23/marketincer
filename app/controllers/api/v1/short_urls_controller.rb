@@ -26,6 +26,19 @@ class Api::V1::ShortUrlsController < ApplicationController
   # POST /api/v1/short_links
   def create_enhanced
     @short_url = current_user.short_urls.build(enhanced_short_url_params)
+    final_url = @short_url.long_url
+    if @short_url.enable_utm == true
+      utm_params = {
+        utm_source: @short_url.utm_source,
+        utm_medium: @short_url.utm_medium,
+        utm_campaign: @short_url.utm_campaign,
+        utm_term: @short_url.utm_term,
+        utm_content: @short_url.utm_content
+      }.compact.to_query
+
+      delimiter = final_url.include?("?") ? "&" : "?"
+      final_url = "#{final_url}#{delimiter}#{utm_params}"
+    end
 
     if @short_url.save
       render json: {
@@ -212,15 +225,13 @@ class Api::V1::ShortUrlsController < ApplicationController
   end
 
   def enhanced_short_url_params
-    params.permit(
-      :destination_url, :title, :custom_back_half, :enable_utm,
+    params.require(:short_url).permit(
+      :long_url, :custom_back_half, :enable_utm,
       :utm_source, :utm_medium, :utm_campaign, :utm_term, :utm_content,
       :enable_qr
-    ).tap do |permitted_params|
-      # Map destination_url to long_url for compatibility
-      permitted_params[:long_url] = permitted_params.delete(:destination_url) if permitted_params[:destination_url]
-    end
+    )
   end
+
 
   def update_params
     params.require(:short_url).permit(
