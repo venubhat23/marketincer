@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.0].define(version: 2025_01_01_000002) do
+ActiveRecord::Schema[8.0].define(version: 2025_01_27_000001) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "pg_catalog.plpgsql"
 
@@ -41,6 +41,22 @@ ActiveRecord::Schema[8.0].define(version: 2025_01_01_000002) do
     t.index ["marketplace_post_id"], name: "index_bids_on_marketplace_post_id"
     t.index ["status"], name: "index_bids_on_status"
     t.index ["user_id"], name: "index_bids_on_user_id"
+  end
+
+  create_table "click_analytics", force: :cascade do |t|
+    t.bigint "short_url_id", null: false
+    t.string "ip_address"
+    t.text "user_agent"
+    t.string "country"
+    t.string "city"
+    t.string "device_type"
+    t.string "browser"
+    t.string "os"
+    t.text "referrer"
+    t.json "additional_data", default: {}
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+    t.index ["short_url_id"], name: "index_click_analytics_on_short_url_id"
   end
 
   create_table "contracts", force: :cascade do |t|
@@ -146,6 +162,34 @@ ActiveRecord::Schema[8.0].define(version: 2025_01_01_000002) do
     t.index ["user_id"], name: "index_purchase_orders_on_user_id"
   end
 
+  create_table "short_urls", force: :cascade do |t|
+    t.bigint "user_id", null: false
+    t.text "long_url", null: false
+    t.string "short_code", null: false
+    t.integer "clicks", default: 0
+    t.json "analytics_data", default: {}
+    t.boolean "active", default: true
+    t.string "title"
+    t.text "description"
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+    t.string "custom_back_half"
+    t.boolean "enable_utm", default: false
+    t.string "utm_source"
+    t.string "utm_medium"
+    t.string "utm_campaign"
+    t.string "utm_term"
+    t.string "utm_content"
+    t.boolean "enable_qr", default: false
+    t.string "qr_code_url"
+    t.text "final_url"
+    t.index ["custom_back_half"], name: "index_short_urls_on_custom_back_half", unique: true
+    t.index ["enable_qr"], name: "index_short_urls_on_enable_qr"
+    t.index ["enable_utm"], name: "index_short_urls_on_enable_utm"
+    t.index ["short_code"], name: "index_short_urls_on_short_code", unique: true
+    t.index ["user_id"], name: "index_short_urls_on_user_id"
+  end
+
   create_table "social_accounts", force: :cascade do |t|
     t.bigint "user_id", null: false
     t.string "provider"
@@ -193,6 +237,10 @@ ActiveRecord::Schema[8.0].define(version: 2025_01_01_000002) do
     t.string "job_title"
     t.string "work_email"
     t.decimal "gst_percentage", precision: 5, scale: 2, default: "18.0"
+    t.text "bio"
+    t.string "avatar_url"
+    t.string "company_name"
+    t.string "timezone", default: "Asia/Kolkata"
     t.index ["activation_token"], name: "index_users_on_activation_token", unique: true
     t.index ["email"], name: "index_users_on_email", unique: true
   end
@@ -200,11 +248,13 @@ ActiveRecord::Schema[8.0].define(version: 2025_01_01_000002) do
   add_foreign_key "ai_generation_logs", "contracts"
   add_foreign_key "bids", "marketplace_posts"
   add_foreign_key "bids", "users"
+  add_foreign_key "click_analytics", "short_urls"
   add_foreign_key "invoices", "users"
   add_foreign_key "marketplace_posts", "users"
   add_foreign_key "posts", "social_pages"
   add_foreign_key "posts", "users"
   add_foreign_key "purchase_orders", "users"
+  add_foreign_key "short_urls", "users"
   add_foreign_key "social_accounts", "users"
   add_foreign_key "social_pages", "social_accounts"
 end

@@ -95,6 +95,7 @@ GEM
     byebug (12.0.0)
     childprocess (5.1.0)
       logger (~> 1.5)
+    chunky_png (1.4.0)
     coderay (1.1.3)
     concurrent-ruby (1.3.5)
     connection_pool (2.5.0)
@@ -332,6 +333,10 @@ GEM
       io-console (~> 0.5)
     request_store (1.7.0)
       rack (>= 1.4)
+    rqrcode (3.1.0)
+      chunky_png (~> 1.0)
+      rqrcode_core (~> 2.0)
+    rqrcode_core (2.0.0)
     rubocop (1.71.1)
       json (~> 2.3)
       language_server-protocol (>= 3.17.0)
@@ -427,6 +432,7 @@ DEPENDENCIES
   bootsnap
   brakeman
   brevo-ruby
+  chunky_png
   debug
   dotenv-rails
   http
@@ -446,6 +452,7 @@ DEPENDENCIES
   rack-cors
   rails (~> 8.0.1)
   redis
+  rqrcode
   rubocop-rails-omakase
   ruby-openai
   sidekiq
