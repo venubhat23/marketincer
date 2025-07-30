@@ -40,7 +40,13 @@ import {
   CloudUpload as UploadIcon,
   Palette as PaletteIcon,
   Visibility as PreviewIcon,
-  Settings as SettingsIcon
+  Settings as SettingsIcon,
+  Analytics as AnalyticsIcon,
+  Close as CloseIcon,
+  TrendingUp as TrendingUpIcon,
+  Devices as DevicesIcon,
+  Language as LanguageIcon,
+  Schedule as ScheduleIcon
 } from '@mui/icons-material';
 
 const LinkAdvancedPage = () => {
@@ -70,6 +76,11 @@ const LinkAdvancedPage = () => {
   const [snackbar, setSnackbar] = useState({ open: false, message: '', severity: 'success' });
   const [previewDialog, setPreviewDialog] = useState(false);
   const [activeTab, setActiveTab] = useState(1);
+  
+  // Analytics modal states
+  const [analyticsModal, setAnalyticsModal] = useState(false);
+  const [analyticsData, setAnalyticsData] = useState(null);
+  const [analyticsLoading, setAnalyticsLoading] = useState(false);
 
   // Color palette for QR codes
   const qrColors = [
@@ -145,9 +156,11 @@ const LinkAdvancedPage = () => {
     // Simulate API call
     setTimeout(() => {
       const finalUrl = generatePreviewUrl();
+      const shortCode = customBackHalf || Math.random().toString(36).substring(2, 8);
       setGeneratedUrl({
         short_url: getShortUrlPreview(),
         long_url: finalUrl,
+        short_code: shortCode,
         qr_code: enableQR ? generateQRCode() : null
       });
       setLoading(false);
@@ -170,6 +183,41 @@ const LinkAdvancedPage = () => {
 
   const handleCloseSnackbar = () => {
     setSnackbar({ ...snackbar, open: false });
+  };
+
+  // Analytics functions
+  const fetchAnalytics = async (shortCode) => {
+    setAnalyticsLoading(true);
+    try {
+      const response = await fetch(`/api/v1/analytics/${shortCode}`, {
+        headers: {
+          'Authorization': `Bearer ${localStorage.getItem('auth_token')}`,
+          'Content-Type': 'application/json'
+        }
+      });
+      
+      if (response.ok) {
+        const data = await response.json();
+        setAnalyticsData(data.data);
+      } else {
+        throw new Error('Failed to fetch analytics');
+      }
+    } catch (error) {
+      showSnackbar('Failed to load analytics data', 'error');
+      console.error('Analytics fetch error:', error);
+    } finally {
+      setAnalyticsLoading(false);
+    }
+  };
+
+  const handleOpenAnalytics = (shortCode) => {
+    setAnalyticsModal(true);
+    fetchAnalytics(shortCode);
+  };
+
+  const handleCloseAnalytics = () => {
+    setAnalyticsModal(false);
+    setAnalyticsData(null);
   };
 
   return (
@@ -767,6 +815,17 @@ const LinkAdvancedPage = () => {
                       >
                         Open
                       </Button>
+                      <Button
+                        variant="contained"
+                        startIcon={<AnalyticsIcon />}
+                        onClick={() => handleOpenAnalytics(generatedUrl.short_code)}
+                        sx={{ 
+                          bgcolor: '#091A48',
+                          '&:hover': { bgcolor: '#0d2456' }
+                        }}
+                      >
+                        Analytics
+                      </Button>
                     </Box>
                     
                     <Box sx={{ mb: 2 }}>
@@ -831,6 +890,245 @@ const LinkAdvancedPage = () => {
             )}
           </CardContent>
         </Card>
+
+        {/* Analytics Modal */}
+        <Dialog
+          open={analyticsModal}
+          onClose={handleCloseAnalytics}
+          maxWidth="lg"
+          fullWidth
+          PaperProps={{
+            sx: {
+              borderRadius: 3,
+              maxHeight: '90vh'
+            }
+          }}
+        >
+          <DialogTitle sx={{ 
+            bgcolor: '#f8f9ff', 
+            borderBottom: '1px solid #e0e7ff',
+            display: 'flex',
+            justifyContent: 'space-between',
+            alignItems: 'center',
+            p: 3
+          }}>
+            <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
+              <AnalyticsIcon sx={{ color: '#882AFF', fontSize: 28 }} />
+              <Typography variant="h5" sx={{ color: '#091A48', fontWeight: 'bold' }}>
+                Link Analytics
+              </Typography>
+            </Box>
+            <IconButton onClick={handleCloseAnalytics} sx={{ color: '#666' }}>
+              <CloseIcon />
+            </IconButton>
+          </DialogTitle>
+          
+          <DialogContent sx={{ p: 0 }}>
+            {analyticsLoading ? (
+              <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', minHeight: 400 }}>
+                <CircularProgress sx={{ color: '#882AFF' }} />
+              </Box>
+            ) : analyticsData ? (
+              <Box sx={{ p: 3 }}>
+                {/* Basic Info Section */}
+                <Card sx={{ mb: 3, bgcolor: '#f0f7ff', border: '1px solid #e3f2fd' }}>
+                  <CardContent>
+                    <Typography variant="h6" sx={{ mb: 2, color: '#091A48', fontWeight: 'bold' }}>
+                      Link Information
+                    </Typography>
+                    <Grid container spacing={2}>
+                      <Grid item xs={12} md={6}>
+                        <Typography variant="body2" color="text.secondary">Short URL:</Typography>
+                        <Typography variant="body1" sx={{ fontWeight: 'bold', color: '#882AFF', mb: 1 }}>
+                          {analyticsData.basic_info?.short_url}
+                        </Typography>
+                      </Grid>
+                      <Grid item xs={12} md={6}>
+                        <Typography variant="body2" color="text.secondary">Created:</Typography>
+                        <Typography variant="body1" sx={{ mb: 1 }}>
+                          {analyticsData.basic_info?.created_at ? new Date(analyticsData.basic_info.created_at).toLocaleDateString() : 'N/A'}
+                        </Typography>
+                      </Grid>
+                      <Grid item xs={12}>
+                        <Typography variant="body2" color="text.secondary">Original URL:</Typography>
+                        <Typography variant="body1" sx={{ 
+                          wordBreak: 'break-all', 
+                          bgcolor: 'white', 
+                          p: 1, 
+                          borderRadius: 1, 
+                          border: '1px solid #e0e0e0' 
+                        }}>
+                          {analyticsData.basic_info?.long_url}
+                        </Typography>
+                      </Grid>
+                    </Grid>
+                  </CardContent>
+                </Card>
+
+                {/* Performance Metrics */}
+                <Grid container spacing={3} sx={{ mb: 3 }}>
+                  <Grid item xs={6} md={3}>
+                    <Card sx={{ textAlign: 'center', bgcolor: '#fff3e0', border: '1px solid #ffcc02' }}>
+                      <CardContent>
+                        <TrendingUpIcon sx={{ fontSize: 40, color: '#ff8f00', mb: 1 }} />
+                        <Typography variant="h4" sx={{ fontWeight: 'bold', color: '#ff8f00' }}>
+                          {analyticsData.performance_metrics?.total_clicks || 0}
+                        </Typography>
+                        <Typography variant="body2" color="text.secondary">
+                          Total Clicks
+                        </Typography>
+                      </CardContent>
+                    </Card>
+                  </Grid>
+                  <Grid item xs={6} md={3}>
+                    <Card sx={{ textAlign: 'center', bgcolor: '#e8f5e8', border: '1px solid #4caf50' }}>
+                      <CardContent>
+                        <ScheduleIcon sx={{ fontSize: 40, color: '#4caf50', mb: 1 }} />
+                        <Typography variant="h4" sx={{ fontWeight: 'bold', color: '#4caf50' }}>
+                          {analyticsData.performance_metrics?.clicks_today || 0}
+                        </Typography>
+                        <Typography variant="body2" color="text.secondary">
+                          Today
+                        </Typography>
+                      </CardContent>
+                    </Card>
+                  </Grid>
+                  <Grid item xs={6} md={3}>
+                    <Card sx={{ textAlign: 'center', bgcolor: '#f3e5f5', border: '1px solid #9c27b0' }}>
+                      <CardContent>
+                        <TrendingUpIcon sx={{ fontSize: 40, color: '#9c27b0', mb: 1 }} />
+                        <Typography variant="h4" sx={{ fontWeight: 'bold', color: '#9c27b0' }}>
+                          {analyticsData.performance_metrics?.clicks_this_week || 0}
+                        </Typography>
+                        <Typography variant="body2" color="text.secondary">
+                          This Week
+                        </Typography>
+                      </CardContent>
+                    </Card>
+                  </Grid>
+                  <Grid item xs={6} md={3}>
+                    <Card sx={{ textAlign: 'center', bgcolor: '#e3f2fd', border: '1px solid #2196f3' }}>
+                      <CardContent>
+                        <TrendingUpIcon sx={{ fontSize: 40, color: '#2196f3', mb: 1 }} />
+                        <Typography variant="h4" sx={{ fontWeight: 'bold', color: '#2196f3' }}>
+                          {analyticsData.performance_metrics?.clicks_this_month || 0}
+                        </Typography>
+                        <Typography variant="body2" color="text.secondary">
+                          This Month
+                        </Typography>
+                      </CardContent>
+                    </Card>
+                  </Grid>
+                </Grid>
+
+                {/* Analytics Charts Section */}
+                <Grid container spacing={3}>
+                  {/* Device Breakdown */}
+                  <Grid item xs={12} md={6}>
+                    <Card>
+                      <CardContent>
+                        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 2 }}>
+                          <DevicesIcon sx={{ color: '#882AFF' }} />
+                          <Typography variant="h6" sx={{ fontWeight: 'bold' }}>
+                            Device Types
+                          </Typography>
+                        </Box>
+                        {analyticsData.analytics_data?.clicks_by_device && Object.keys(analyticsData.analytics_data.clicks_by_device).length > 0 ? (
+                          Object.entries(analyticsData.analytics_data.clicks_by_device).map(([device, count]) => (
+                            <Box key={device} sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 1 }}>
+                              <Typography variant="body2">{device}</Typography>
+                              <Chip 
+                                label={count} 
+                                size="small" 
+                                sx={{ bgcolor: '#e3f2fd', color: '#1976d2' }}
+                              />
+                            </Box>
+                          ))
+                        ) : (
+                          <Typography variant="body2" color="text.secondary">No device data available</Typography>
+                        )}
+                      </CardContent>
+                    </Card>
+                  </Grid>
+
+                  {/* Country Breakdown */}
+                  <Grid item xs={12} md={6}>
+                    <Card>
+                      <CardContent>
+                        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 2 }}>
+                          <LanguageIcon sx={{ color: '#882AFF' }} />
+                          <Typography variant="h6" sx={{ fontWeight: 'bold' }}>
+                            Top Countries
+                          </Typography>
+                        </Box>
+                        {analyticsData.analytics_data?.clicks_by_country && Object.keys(analyticsData.analytics_data.clicks_by_country).length > 0 ? (
+                          Object.entries(analyticsData.analytics_data.clicks_by_country).slice(0, 5).map(([country, count]) => (
+                            <Box key={country} sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 1 }}>
+                              <Typography variant="body2">{country}</Typography>
+                              <Chip 
+                                label={count} 
+                                size="small" 
+                                sx={{ bgcolor: '#f3e5f5', color: '#9c27b0' }}
+                              />
+                            </Box>
+                          ))
+                        ) : (
+                          <Typography variant="body2" color="text.secondary">No country data available</Typography>
+                        )}
+                      </CardContent>
+                    </Card>
+                  </Grid>
+
+                  {/* Recent Clicks */}
+                  <Grid item xs={12}>
+                    <Card>
+                      <CardContent>
+                        <Typography variant="h6" sx={{ mb: 2, fontWeight: 'bold' }}>
+                          Recent Activity
+                        </Typography>
+                        {analyticsData.analytics_data?.recent_clicks && analyticsData.analytics_data.recent_clicks.length > 0 ? (
+                          <Box sx={{ maxHeight: 300, overflowY: 'auto' }}>
+                            {analyticsData.analytics_data.recent_clicks.slice(0, 10).map((click, index) => (
+                              <Box key={index} sx={{ 
+                                display: 'flex', 
+                                justifyContent: 'space-between', 
+                                alignItems: 'center', 
+                                p: 2, 
+                                mb: 1,
+                                bgcolor: index % 2 === 0 ? '#f9f9f9' : 'white',
+                                borderRadius: 1
+                              }}>
+                                <Box>
+                                  <Typography variant="body2" sx={{ fontWeight: 'bold' }}>
+                                    {click.country || 'Unknown'} • {click.device_type || 'Unknown Device'}
+                                  </Typography>
+                                  <Typography variant="caption" color="text.secondary">
+                                    {click.created_at ? new Date(click.created_at).toLocaleString() : 'Unknown time'}
+                                  </Typography>
+                                </Box>
+                                <Typography variant="body2" color="text.secondary">
+                                  {click.browser || 'Unknown Browser'}
+                                </Typography>
+                              </Box>
+                            ))}
+                          </Box>
+                        ) : (
+                          <Typography variant="body2" color="text.secondary">No recent activity</Typography>
+                        )}
+                      </CardContent>
+                    </Card>
+                  </Grid>
+                </Grid>
+              </Box>
+            ) : (
+              <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', minHeight: 400 }}>
+                <Typography variant="body1" color="text.secondary">
+                  No analytics data available
+                </Typography>
+              </Box>
+            )}
+          </DialogContent>
+        </Dialog>
 
         {/* Snackbar for notifications */}
         <Snackbar
