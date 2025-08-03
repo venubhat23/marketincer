@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import axios from 'axios';
 import {
   Box,
   Typography,
@@ -40,7 +41,8 @@ import {
   CloudUpload as UploadIcon,
   Palette as PaletteIcon,
   Visibility as PreviewIcon,
-  Settings as SettingsIcon
+  Settings as SettingsIcon,
+  AutoAwesome as AIIcon
 } from '@mui/icons-material';
 
 const LinkAdvancedPage = () => {
@@ -70,6 +72,11 @@ const LinkAdvancedPage = () => {
   const [snackbar, setSnackbar] = useState({ open: false, message: '', severity: 'success' });
   const [previewDialog, setPreviewDialog] = useState(false);
   const [activeTab, setActiveTab] = useState(1);
+  
+  // AI Content Generation states
+  const [postContent, setPostContent] = useState('');
+  const [generatingContent, setGeneratingContent] = useState(false);
+  const [showContentSection, setShowContentSection] = useState(false);
 
   // Color palette for QR codes
   const qrColors = [
@@ -170,6 +177,79 @@ const LinkAdvancedPage = () => {
 
   const handleCloseSnackbar = () => {
     setSnackbar({ ...snackbar, open: false });
+  };
+
+  // Generate with AI function
+  const handleGenerateWithAI = async () => {
+    setGeneratingContent(true);
+    try {
+      const token = localStorage.getItem("token");
+      const response = await axios.post(
+        "https://api.marketincer.com/api/v1/generate-content", // Replace with your actual endpoint
+        {
+          description: "generate note on social media"
+        },
+        {
+          headers: {
+            Authorization: `Bearer ${token}`,
+            "Content-Type": "application/json"
+          }
+        }
+      );
+      
+      // Insert the generated content into the editor
+      const generatedContent = response.data.content || response.data.message || response.data;
+      setPostContent(generatedContent);
+      
+      showSnackbar("Content generated successfully!", "success");
+    } catch (error) {
+      console.error("Error generating content:", error);
+      
+      // For demo purposes, use the sample response you provided
+      const sampleResponse = `Here's a well-structured note on social media:
+---
+### Note on Social Media
+Definition:
+Social media refers to digital platforms and applications that enable users to create, share, and interact with content, ideas, and information in virtual communities and networks.
+---
+Popular Platforms:
+* Facebook: For social networking and community building.
+* Instagram: For photo and video sharing.
+* Twitter (X): For microblogging and real-time updates.
+* LinkedIn: For professional networking.
+* YouTube: For video sharing and streaming.
+* WhatsApp & Telegram: For messaging and group communication.
+---
+Importance of Social Media:
+1. Communication: Provides instant and global connectivity.
+2. Information Sharing: Acts as a major source of news and knowledge.
+3. Marketing & Branding: Businesses use social media for advertising and customer engagement.
+4. Education & Awareness: Helps spread awareness about social, political, and environmental issues.
+5. Entertainment: Offers a wide variety of content such as memes, videos, music, and more.
+---
+Positive Impacts:
+* Strengthens relationships and communities.
+* Promotes small businesses and entrepreneurship.
+* Provides a platform for self-expression and creativity.
+* Encourages social and cultural exchange.
+---
+Negative Impacts:
+* Cyberbullying and online harassment.
+* Spread of misinformation and fake news.
+* Addiction leading to reduced productivity.
+* Privacy concerns and data breaches.
+---
+Conclusion:
+Social media is a powerful tool that can connect, educate, and entertain. However, responsible usage is essential to avoid its negative effects and ensure a safe online environment.
+---
+Would you like me to create this as a short handwritten-style note (suitable for study/revision) or as a detailed infographic-style note?`;
+      
+      setPostContent(sampleResponse);
+      
+      showSnackbar("Using sample content for demo", "info");
+    } finally {
+      setGeneratingContent(false);
+    }
   };
 
   return (
@@ -529,6 +609,146 @@ const LinkAdvancedPage = () => {
                             }
                           }}
                         />
+                      </Box>
+                    )}
+                  </CardContent>
+                </Card>
+
+                {/* AI Content Generation Section */}
+                <Card sx={{ mb: 3, bgcolor: '#fff8f0', border: '1px solid #ffe0b3' }}>
+                  <CardContent>
+                    <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
+                      <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
+                        <AIIcon sx={{ color: '#882AFF' }} />
+                        <Typography variant="h6" sx={{ color: '#091A48', fontWeight: 'bold' }}>
+                          AI Content Generation
+                        </Typography>
+                      </Box>
+                      <Switch
+                        checked={showContentSection}
+                        onChange={(e) => setShowContentSection(e.target.checked)}
+                        sx={{
+                          '& .MuiSwitch-switchBase.Mui-checked': {
+                            color: '#882AFF',
+                          },
+                          '& .MuiSwitch-switchBase.Mui-checked + .MuiSwitch-track': {
+                            backgroundColor: '#882AFF',
+                          }
+                        }}
+                      />
+                    </Box>
+                    
+                    {showContentSection && (
+                      <Box sx={{ mt: 3 }}>
+                        <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+                          Generate AI-powered social media content to accompany your shortened links.
+                        </Typography>
+                        
+                        <Box sx={{ mb: 3 }}>
+                          <Button
+                            variant="contained"
+                            onClick={handleGenerateWithAI}
+                            disabled={generatingContent}
+                            startIcon={generatingContent ? <CircularProgress size={20} /> : (
+                              <Box sx={{ 
+                                width: 24, 
+                                height: 24, 
+                                display: 'flex', 
+                                alignItems: 'center', 
+                                justifyContent: 'center',
+                                borderRadius: '50%',
+                                bgcolor: 'rgba(255,255,255,0.2)'
+                              }}>
+                                <img 
+                                  src="/marketincer.jpg" 
+                                  alt="Marketincer Logo" 
+                                  style={{
+                                    width: '100%',
+                                    height: '100%',
+                                    objectFit: 'contain',
+                                    borderRadius: '50%'
+                                  }}
+                                />
+                              </Box>
+                            )}
+                            sx={{
+                              py: 1.5,
+                              px: 3,
+                              fontSize: '1rem',
+                              fontWeight: 'bold',
+                              background: 'linear-gradient(45deg, #882AFF 30%, #091A48 90%)',
+                              '&:hover': {
+                                background: 'linear-gradient(45deg, #7a26e6 30%, #082040 90%)',
+                              },
+                              '&:disabled': {
+                                background: '#ccc',
+                              }
+                            }}
+                          >
+                            {generatingContent ? 'Generating...' : 'Generate with AI'}
+                          </Button>
+                        </Box>
+
+                        {postContent && (
+                          <Box sx={{ mt: 3 }}>
+                            <Typography variant="subtitle1" sx={{ mb: 1, fontWeight: 'bold', color: '#091A48' }}>
+                              Generated Content:
+                            </Typography>
+                            <TextField
+                              fullWidth
+                              multiline
+                              rows={8}
+                              value={postContent}
+                              onChange={(e) => setPostContent(e.target.value)}
+                              variant="outlined"
+                              placeholder="Generated content will appear here..."
+                              sx={{
+                                '& .MuiOutlinedInput-root': {
+                                  borderRadius: 2,
+                                  '&:hover fieldset': {
+                                    borderColor: '#882AFF',
+                                  },
+                                  '&.Mui-focused fieldset': {
+                                    borderColor: '#882AFF',
+                                  }
+                                }
+                              }}
+                            />
+                            <Box sx={{ mt: 2, display: 'flex', gap: 1 }}>
+                              <Button
+                                variant="outlined"
+                                size="small"
+                                startIcon={<CopyIcon />}
+                                onClick={() => handleCopyUrl(postContent)}
+                                sx={{
+                                  borderColor: '#882AFF',
+                                  color: '#882AFF',
+                                  '&:hover': {
+                                    borderColor: '#091A48',
+                                    bgcolor: 'rgba(136, 42, 255, 0.04)',
+                                  }
+                                }}
+                              >
+                                Copy Content
+                              </Button>
+                              <Button
+                                variant="outlined"
+                                size="small"
+                                onClick={() => setPostContent('')}
+                                sx={{
+                                  borderColor: '#ccc',
+                                  color: '#666',
+                                  '&:hover': {
+                                    borderColor: '#999',
+                                    bgcolor: 'rgba(0, 0, 0, 0.04)',
+                                  }
+                                }}
+                              >
+                                Clear
+                              </Button>
+                            </Box>
+                          </Box>
+                        )}
                       </Box>
                     )}
                   </CardContent>
