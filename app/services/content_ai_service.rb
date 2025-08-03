@@ -3,7 +3,7 @@ class ContentAiService
   require 'json'
   
   # Configuration for different AI services
-  GROQ_API_KEY = "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"
+  GROQ_API_KEY = "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"
   ANTHROPIC_API_KEY = ENV['ANTHROPIC_API_KEY']
   
   def initialize(description)
