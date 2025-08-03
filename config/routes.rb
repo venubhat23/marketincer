@@ -122,6 +122,9 @@ Rails.application.routes.draw do
         end
       end
 
+      # Content Generation API route
+      post 'generate-content', to: 'content_generation#create'
+
       # Analytics API routes
       get 'analytics/summary', to: 'analytics#summary'
       get 'analytics/:short_code', to: 'analytics#show', as: 'analytics'
