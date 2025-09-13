@@ -20,29 +20,57 @@ module Api
           post = @current_user.posts.new(post_params.merge(account_id: social_page.social_id))
           post.social_page = social_page
 
-          if post.save
+          begin
+            # First, save the post in a transaction
+            ActiveRecord::Base.transaction do
+              unless post.save
+                raise ActiveRecord::RecordInvalid.new(post)
+              end
+            end
+
+            # Then handle publishing outside the transaction
             if post.status == "scheduled"
               created_posts << { message: "Post scheduled successfully", post: post_response(post) }
             elsif post.status != "draft"
               begin
                 PostPublisherService.new(post).publish
+                post.reload # Reload to get updated publish_log
                 created_posts << { publish_log: post.publish_log, post: post_response(post) }
               rescue StandardError => e
-                errors << { post_id: post.id, status: post.status, error: e.message, log: post.publish_log }
+                # Post was saved but publishing failed - keep the post with failed status
+                post.reload # Reload to get the failed status and error message
+                errors << { social_page_id: social_page_id, error: e.message, post: post_response(post) }
               end
             else
               created_posts << { post: post_response(post) }
             end
-          else
-            errors << { social_page_id: social_page_id, error: post.errors.full_messages.join(", ") }
+          rescue ActiveRecord::RecordInvalid => e
+            errors << { social_page_id: social_page_id, error: e.record.errors.full_messages.join(", ") }
+          rescue StandardError => e
+            # This catches any other unexpected errors
+            post.destroy if post.persisted?
+            errors << { social_page_id: social_page_id, error: e.message }
           end
         end
 
-        if errors.any?
-          render json: { status: "partial_success", posts: created_posts, errors: errors }, status: :multi_status
-        else
-          render json: { status: "success", posts: created_posts }
-        end
+        response_data = {
+          status: errors.any? && created_posts.any? ? "partial_success" :
+                  errors.any? && created_posts.empty? ? "error" : "success",
+          posts: created_posts,
+          errors: errors
+        }
+
+        response_data[:message] = "All posts failed to create" if errors.any? && created_posts.empty?
+
+        status_code = if errors.any? && created_posts.any?
+                       :multi_status
+                     elsif errors.any? && created_posts.empty?
+                       :unprocessable_entity
+                     else
+                       :ok
+                     end
+
+        render json: response_data, status: status_code
       end
 
       # Schedule posts for multiple social_page_ids
@@ -172,13 +200,20 @@ module Api
       end
 
       def post_response(post)
-        {
+        response = {
           id: post.id,
           status: post.status,
           scheduled_at: post.scheduled_at,
           created_at: post.created_at,
           brand_name: post.brand_name
         }
+
+        # Include error message if post failed
+        if post.status == 'failed' && post.publish_log.present?
+          response[:error_message] = post.publish_log
+        end
+
+        response
       end
     end
   end

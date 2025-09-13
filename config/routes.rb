@@ -24,8 +24,15 @@ Rails.application.routes.draw do
         member do
           get :profile
           get :media
+          get :insights
           get :analytics
+          get :comprehensive
           get 'media/:media_id', to: 'instagram_analytics#media_details', as: :media_details
+          get 'media/:media_id/insights', to: 'instagram_analytics#media_insights', as: :media_insights
+        end
+        collection do
+          get :available_accounts
+          post :sync_data
         end
       end
 

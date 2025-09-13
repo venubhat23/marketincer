@@ -22,7 +22,6 @@ module Api
           end
 
           analytics_data = []
-
           social_pages.each do |page|
             service = InstagramAnalyticsService.new(page.access_token)
             page_analytics = service.get_comprehensive_analytics(page.social_id)

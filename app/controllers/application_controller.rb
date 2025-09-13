@@ -1,6 +1,11 @@
 class ApplicationController < ActionController::API
   before_action :set_cors_headers
 
+  # Global exception handling
+  rescue_from StandardError, with: :handle_standard_error
+  rescue_from ActiveRecord::RecordNotFound, with: :handle_not_found
+  rescue_from ActionController::ParameterMissing, with: :handle_parameter_missing
+
   # Handle CORS preflight (OPTIONS) requests
   def preflight
     head :ok
@@ -35,6 +40,32 @@ class ApplicationController < ActionController::API
   end
 
   private
+
+  # Error handling methods
+  def handle_standard_error(exception)
+    Rails.logger.error "StandardError: #{exception.message}\n#{exception.backtrace.join("\n")}"
+    render json: {
+      status: "error",
+      message: "An unexpected error occurred",
+      error: exception.message
+    }, status: :internal_server_error
+  end
+
+  def handle_not_found(exception)
+    render json: {
+      status: "error",
+      message: "Resource not found",
+      error: exception.message
+    }, status: :not_found
+  end
+
+  def handle_parameter_missing(exception)
+    render json: {
+      status: "error",
+      message: "Required parameter missing",
+      error: exception.message
+    }, status: :bad_request
+  end
 
   # ✅ Set CORS headers for every request
   def set_cors_headers
