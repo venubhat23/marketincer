@@ -9,7 +9,8 @@ ENV RAILS_ENV=production \
 
 # Install essential dependencies
 RUN apt-get update -qq && \
-    apt-get install -y build-essential libpq-dev nodejs yarn
+    apt-get install -y build-essential libpq-dev nodejs npm && \
+    npm install -g yarn
 
 # Set working directory
 WORKDIR /app
