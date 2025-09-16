@@ -36,6 +36,20 @@ Rails.application.routes.draw do
         end
       end
 
+      # LinkedIn Analytics API
+      resources :linkedin_analytics, only: [:index, :show], param: :account_id do
+        member do
+          get :follower_demographics
+          get :share_statistics
+          get :social_actions
+          get :organization_info
+        end
+        collection do
+          get :available_accounts
+          post :sync_data
+        end
+      end
+
       post 'signup', to: 'registrations#create'
       post 'login', to: 'sessions#create'
       get 'activate/:token', to: 'registrations#activate', as: 'activate'

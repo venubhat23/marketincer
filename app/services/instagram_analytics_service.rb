@@ -17,7 +17,7 @@ class InstagramAnalyticsService
     cache_key = "instagram_account_#{page_id}"
 
     # Check cache first
-    if @cache[cache_key] && (Time.current - @cache[cache_key][:timestamp]) < @cache_ttl
+    if @cache[cache_key] && @cache[cache_key][:timestamp] && (Time.current - @cache[cache_key][:timestamp]) < @cache_ttl
       Rails.logger.info "Using cached Instagram account for page: #{page_id}"
       return @cache[cache_key][:data]
     end
@@ -61,13 +61,15 @@ class InstagramAnalyticsService
 
     if instagram_id
       Rails.logger.info "Found Instagram account ID: #{instagram_id}"
+      # Cache the result
+      @cache[cache_key] = { data: instagram_id, timestamp: Time.current }
+      return instagram_id
     else
       Rails.logger.info "No Instagram account found for page #{page_id}"
+      # Cache the negative result
+      @cache[cache_key] = { data: nil, timestamp: Time.current }
+      return nil
     end
-
-    # Cache the result
-    @cache[cache_key] = { data: instagram_id, timestamp: Time.current }
-    instagram_id
   rescue => e
     Rails.logger.error "Page Instagram Account Error: #{e.message}"
     Rails.logger.error "Response: #{response&.body}"
@@ -85,30 +87,138 @@ class InstagramAnalyticsService
     cache_key = "profile_#{instagram_account_id}"
 
     # Check cache first
-    if @cache[cache_key] && (Time.current - @cache[cache_key][:timestamp]) < @cache_ttl
+    if @cache[cache_key] && @cache[cache_key][:timestamp] && (Time.current - @cache[cache_key][:timestamp]) < @cache_ttl
       return @cache[cache_key][:data]
     end
 
     uri = URI("#{@base_url}/#{instagram_account_id}")
     params = {
       access_token: @access_token,
-      fields: "id,username,name,biography,followers_count,follows_count,media_count,profile_picture_url,website"
+      fields: "id,username,name"
     }
     uri.query = URI.encode_www_form(params)
 
     response = Net::HTTP.get_response(uri)
 
     if response.code != '200'
-      Rails.logger.warn "Profile lookup failed: #{response.body}"
+      error_data = JSON.parse(response.body) rescue {}
+      error_message = error_data.dig('error', 'message') || response.body
+
+      Rails.logger.warn "Profile lookup failed: #{error_message}"
+
+      # If it's a field access error, try with basic fields only
+      if error_message.include?('nonexisting field')
+        Rails.logger.info "Retrying profile fetch with basic fields for #{instagram_account_id}"
+        return get_basic_profile(instagram_account_id)
+      end
+
       @cache[cache_key] = { data: {}, timestamp: Time.current }
       return {}
     end
 
     profile_data = JSON.parse(response.body)
+
+    # Add default values for fields that might not be present
+    profile_data['biography'] = profile_data['biography'] || nil
+    profile_data['followers_count'] = profile_data['followers_count'] || 0
+    profile_data['follows_count'] = profile_data['follows_count'] || 0
+    profile_data['media_count'] = profile_data['media_count'] || 0
+    profile_data['profile_picture_url'] = profile_data['profile_picture_url'] || nil
+    profile_data['website'] = profile_data['website'] || nil
+
     @cache[cache_key] = { data: profile_data, timestamp: Time.current }
     profile_data
   rescue => e
     Rails.logger.error "Instagram Profile Error: #{e.message}"
+    @cache[cache_key] = { data: {}, timestamp: Time.current }
+    {}
+  end
+
+  # Get basic profile with minimal fields for problematic accounts
+  def get_basic_profile(instagram_account_id)
+    cache_key = "basic_profile_#{instagram_account_id}"
+
+    # Try minimal Instagram fields first
+    uri = URI("#{@base_url}/#{instagram_account_id}")
+    params = {
+      access_token: @access_token,
+      fields: "id,username,name"
+    }
+    uri.query = URI.encode_www_form(params)
+
+    response = Net::HTTP.get_response(uri)
+
+    if response.code != '200'
+      error_data = JSON.parse(response.body) rescue {}
+      error_message = error_data.dig('error', 'message') || response.body
+
+      Rails.logger.warn "Basic profile lookup also failed: #{error_message}"
+
+      # If it's still a field error, this might be a Facebook Page, try Page fields
+      if error_message.include?('nonexisting field')
+        Rails.logger.info "Trying Facebook Page fields for #{instagram_account_id}"
+        return get_facebook_page_profile(instagram_account_id)
+      end
+
+      @cache[cache_key] = { data: {}, timestamp: Time.current }
+      return {}
+    end
+
+    profile_data = JSON.parse(response.body)
+    # Add missing fields with defaults
+    profile_data['biography'] = nil
+    profile_data['followers_count'] = 0
+    profile_data['follows_count'] = 0
+    profile_data['media_count'] = 0
+    profile_data['profile_picture_url'] = nil
+    profile_data['website'] = nil
+
+    @cache[cache_key] = { data: profile_data, timestamp: Time.current }
+    profile_data
+  rescue => e
+    Rails.logger.error "Basic Instagram Profile Error: #{e.message}"
+    @cache[cache_key] = { data: {}, timestamp: Time.current }
+    {}
+  end
+
+  # Get Facebook Page profile (for pages without Instagram accounts)
+  def get_facebook_page_profile(page_id)
+    cache_key = "fb_page_profile_#{page_id}"
+
+    uri = URI("#{@base_url}/#{page_id}")
+    params = {
+      access_token: @access_token,
+      fields: "id,name,username,link,picture"
+    }
+    uri.query = URI.encode_www_form(params)
+
+    response = Net::HTTP.get_response(uri)
+
+    if response.code != '200'
+      Rails.logger.warn "Facebook Page profile lookup failed: #{response.body}"
+      @cache[cache_key] = { data: {}, timestamp: Time.current }
+      return {}
+    end
+
+    page_data = JSON.parse(response.body)
+
+    # Convert Facebook Page data to Instagram-like structure
+    profile_data = {
+      'id' => page_data['id'],
+      'username' => page_data['username'] || page_data['name']&.downcase&.gsub(/\s+/, ''),
+      'name' => page_data['name'],
+      'biography' => nil,
+      'followers_count' => 0,
+      'follows_count' => 0,
+      'media_count' => 0,
+      'profile_picture_url' => page_data.dig('picture', 'data', 'url'),
+      'website' => page_data['link']
+    }
+
+    @cache[cache_key] = { data: profile_data, timestamp: Time.current }
+    profile_data
+  rescue => e
+    Rails.logger.error "Facebook Page Profile Error: #{e.message}"
     @cache[cache_key] = { data: {}, timestamp: Time.current }
     {}
   end
@@ -121,9 +231,13 @@ class InstagramAnalyticsService
     if instagram_account_id
       # This is a Facebook Page with Instagram account
       get_instagram_profile(instagram_account_id)
-    else
-      # Try direct Instagram account access
+    elsif is_instagram_account_id?(user_id)
+      # Try direct Instagram account access if it looks like an Instagram ID
       get_instagram_profile(user_id)
+    else
+      # This is likely a Facebook Page without Instagram account
+      Rails.logger.info "No Instagram account found for page #{user_id}, trying Facebook Page profile"
+      get_facebook_page_profile(user_id)
     end
   end
 
@@ -132,19 +246,31 @@ class InstagramAnalyticsService
     cache_key = "media_#{user_id}_#{limit}"
 
     # Check cache first (shorter TTL for media)
-    if @cache[cache_key] && (Time.current - @cache[cache_key][:timestamp]) < 180 # 3 minutes
+    if @cache[cache_key] && @cache[cache_key][:timestamp] && (Time.current - @cache[cache_key][:timestamp]) < 180 # 3 minutes
       return @cache[cache_key][:data]
     end
 
     # First try to get Instagram account from page
-    instagram_account_id = get_page_instagram_account(user_id) || user_id
+    instagram_account_id = get_page_instagram_account(user_id)
 
-    return { 'data' => [] } if instagram_account_id.nil?
+    # If no Instagram account found, this is likely a Facebook Page without Instagram
+    if instagram_account_id.nil?
+      Rails.logger.info "No Instagram account found for page #{user_id}, returning empty media"
+      @cache[cache_key] = { data: { 'data' => [] }, timestamp: Time.current }
+      return { 'data' => [] }
+    end
+
+    # Double check that this is actually an Instagram account ID
+    if !is_instagram_account_id?(instagram_account_id) && instagram_account_id != user_id
+      Rails.logger.warn "Invalid Instagram account ID #{instagram_account_id} for page #{user_id}, returning empty media"
+      @cache[cache_key] = { data: { 'data' => [] }, timestamp: Time.current }
+      return { 'data' => [] }
+    end
 
     uri = URI("#{@base_url}/#{instagram_account_id}/media")
     params = {
       access_token: @access_token,
-      fields: "id,media_type,media_url,thumbnail_url,permalink,timestamp,caption,like_count,comments_count,reach,impressions,saved",
+      fields: "id,media_type,permalink,timestamp,caption",
       limit: limit
     }
     uri.query = URI.encode_www_form(params)
@@ -152,12 +278,35 @@ class InstagramAnalyticsService
     response = Net::HTTP.get_response(uri)
 
     if response.code != '200'
-      Rails.logger.warn "Media lookup failed: #{response.body}"
+      error_data = JSON.parse(response.body) rescue {}
+      error_message = error_data.dig('error', 'message') || response.body
+      Rails.logger.warn "Media lookup failed: #{error_message}"
       @cache[cache_key] = { data: { 'data' => [] }, timestamp: Time.current }
       return { 'data' => [] }
     end
 
     media_data = JSON.parse(response.body)
+
+    # Add default values for missing fields in each media item
+    if media_data['data']
+      media_data['data'].each do |media|
+        media['media_url'] = media['media_url'] || nil
+        media['thumbnail_url'] = media['thumbnail_url'] || nil
+        media['like_count'] = media['like_count'] || 0
+        media['comments_count'] = media['comments_count'] || 0
+        media['reach'] = media['reach'] || 0
+        media['impressions'] = media['impressions'] || 0
+        media['saved'] = media['saved'] || 0
+        media['video_views'] = media['video_views'] || 0
+        media['plays'] = media['plays'] || 0
+        media['shares'] = media['shares'] || 0
+        media['is_shared_to_feed'] = media['is_shared_to_feed'] || false
+        media['shortcode'] = media['shortcode'] || nil
+        media['media_product_type'] = media['media_product_type'] || nil
+        media['children'] = media['children'] || {}
+      end
+    end
+
     @cache[cache_key] = { data: media_data, timestamp: Time.current }
     media_data
   rescue => e
@@ -171,7 +320,7 @@ class InstagramAnalyticsService
     uri = URI("#{@base_url}/#{media_id}")
     params = {
       access_token: @access_token,
-      fields: "id,media_type,media_url,thumbnail_url,permalink,timestamp,caption,like_count,comments_count,username"
+      fields: "id,media_type,permalink,timestamp,caption"
     }
     uri.query = URI.encode_www_form(params)
 
@@ -180,9 +329,31 @@ class InstagramAnalyticsService
 
     media_data = JSON.parse(response.body)
 
-    # Get media insights
-    insights = get_media_insights(media_id)
-    media_data['insights'] = insights if insights.any?
+    # Add default values for missing fields
+    media_data['media_url'] = media_data['media_url'] || nil
+    media_data['thumbnail_url'] = media_data['thumbnail_url'] || nil
+    media_data['like_count'] = media_data['like_count'] || 0
+    media_data['comments_count'] = media_data['comments_count'] || 0
+    media_data['username'] = media_data['username'] || nil
+    media_data['reach'] = media_data['reach'] || 0
+    media_data['impressions'] = media_data['impressions'] || 0
+    media_data['saved'] = media_data['saved'] || 0
+    media_data['video_views'] = media_data['video_views'] || 0
+    media_data['plays'] = media_data['plays'] || 0
+    media_data['shares'] = media_data['shares'] || 0
+    media_data['is_shared_to_feed'] = media_data['is_shared_to_feed'] || false
+    media_data['shortcode'] = media_data['shortcode'] || nil
+    media_data['media_product_type'] = media_data['media_product_type'] || nil
+    media_data['children'] = media_data['children'] || {}
+
+    # Try to get media insights if available
+    begin
+      insights = get_media_insights(media_id)
+      media_data['insights'] = insights if insights.any?
+    rescue => e
+      Rails.logger.warn "Could not fetch insights for media #{media_id}: #{e.message}"
+      media_data['insights'] = {}
+    end
 
     media_data
   rescue => e
@@ -435,7 +606,15 @@ class InstagramAnalyticsService
   end
 
   # Analyze user's content with enhanced insights
-  def analyze_user_content(user_id)
+  def analyze_user_content(user_id, followers_count = 0)
+    # Check if this page has an Instagram account before trying to get media
+    instagram_account_id = get_page_instagram_account(user_id)
+
+    if instagram_account_id.nil? && !is_instagram_account_id?(user_id)
+      Rails.logger.info "No Instagram account found for #{user_id}, returning default analytics"
+      return default_analytics
+    end
+
     media_data = get_user_media(user_id, 100)
 
     return default_analytics if media_data['data'].blank?
@@ -520,7 +699,8 @@ class InstagramAnalyticsService
           url: media['permalink'],
           media_url: media['media_url'],
           thumbnail_url: media['thumbnail_url'],
-          caption: media['caption']&.truncate(100),
+          caption: media['caption']&.truncate(200),
+          full_caption: media['caption'],
           timestamp: media['timestamp'],
           likes: likes,
           comments: comments,
@@ -529,7 +709,28 @@ class InstagramAnalyticsService
           saved: saved,
           shares: shares,
           clicks: clicks,
-          engagement: likes + comments
+          engagement: likes + comments,
+          # Enhanced fields
+          video_views: media['video_views'] || 0,
+          plays: media['plays'] || 0,
+          is_shared_to_feed: media['is_shared_to_feed'],
+          shortcode: media['shortcode'],
+          media_product_type: media['media_product_type'],
+          children: media['children'] ? media['children']['data'] : [],
+          # Performance metrics
+          engagement_rate: followers_count > 0 ? (((likes + comments).to_f / followers_count) * 100).round(2) : 0,
+          reach_rate: followers_count > 0 && reach > 0 ? ((reach.to_f / followers_count) * 100).round(2) : 0,
+          save_rate: reach > 0 && saved > 0 ? ((saved.to_f / reach) * 100).round(2) : 0,
+          # Content analysis
+          has_hashtags: media['caption']&.include?('#') || false,
+          hashtag_count: media['caption']&.scan(/#\w+/)&.length || 0,
+          has_mentions: media['caption']&.include?('@') || false,
+          mention_count: media['caption']&.scan(/@\w+/)&.length || 0,
+          caption_length: media['caption']&.length || 0,
+          # Time analysis
+          days_since_posted: media['timestamp'] ? ((Time.current - Time.parse(media['timestamp'])) / 1.day).round : 0,
+          posted_time: media['timestamp'] ? Time.parse(media['timestamp']).strftime('%H:%M') : nil,
+          posted_day: media['timestamp'] ? Time.parse(media['timestamp']).strftime('%A') : nil
         }
       end
 
@@ -537,10 +738,12 @@ class InstagramAnalyticsService
       engagement_score = likes + comments
       analysis[:top_performing_posts] << {
         id: media['id'],
+        type: media['media_type'],
         url: media['permalink'],
         media_url: media['media_url'],
         thumbnail_url: media['thumbnail_url'],
-        caption: media['caption']&.truncate(100),
+        caption: media['caption']&.truncate(200),
+        full_caption: media['caption'],
         timestamp: media['timestamp'],
         likes: likes,
         comments: comments,
@@ -549,7 +752,29 @@ class InstagramAnalyticsService
         saved: saved,
         shares: shares,
         clicks: clicks,
-        engagement: engagement_score
+        engagement: engagement_score,
+        # Enhanced fields
+        video_views: media['video_views'] || 0,
+        plays: media['plays'] || 0,
+        is_shared_to_feed: media['is_shared_to_feed'],
+        shortcode: media['shortcode'],
+        media_product_type: media['media_product_type'],
+        children: media['children'] ? media['children']['data'] : [],
+        # Performance metrics
+        engagement_rate: followers_count > 0 ? ((engagement_score.to_f / followers_count) * 100).round(2) : 0,
+        reach_rate: followers_count > 0 && reach > 0 ? ((reach.to_f / followers_count) * 100).round(2) : 0,
+        save_rate: reach > 0 && saved > 0 ? ((saved.to_f / reach) * 100).round(2) : 0,
+        performance_score: calculate_performance_score(likes, comments, reach, impressions, saved, shares),
+        # Content analysis
+        has_hashtags: media['caption']&.include?('#') || false,
+        hashtag_count: media['caption']&.scan(/#\w+/)&.length || 0,
+        has_mentions: media['caption']&.include?('@') || false,
+        mention_count: media['caption']&.scan(/@\w+/)&.length || 0,
+        caption_length: media['caption']&.length || 0,
+        # Time analysis
+        days_since_posted: media['timestamp'] ? ((Time.current - Time.parse(media['timestamp'])) / 1.day).round : 0,
+        posted_time: media['timestamp'] ? Time.parse(media['timestamp']).strftime('%H:%M') : nil,
+        posted_day: media['timestamp'] ? Time.parse(media['timestamp']).strftime('%A') : nil
       }
 
       # Analyze posting frequency by month
@@ -640,7 +865,7 @@ class InstagramAnalyticsService
       followers_count = profile['followers_count'] || 0
 
       # Get analytics data with individual error handling
-      analytics = safe_execute { analyze_user_content(user_id) } || default_analytics
+      analytics = safe_execute { analyze_user_content(user_id, followers_count) } || default_analytics
       account_insights = safe_execute { get_account_insights(instagram_account_id) } || {}
       demographics = safe_execute { get_follower_demographics(instagram_account_id) } || {}
       enhanced_demographics = get_enhanced_audience_demographics(instagram_account_id, followers_count)
@@ -749,9 +974,34 @@ class InstagramAnalyticsService
       },
       collected_at: Time.current.iso8601
     }
+    rescue => e
+      Rails.logger.error "Instagram Comprehensive Analytics Error: #{e.message}"
+      record_failure(user_id)
+      default_comprehensive_analytics
+    end
   end
 
   private
+
+  # Calculate comprehensive performance score for a post (0-100)
+  def calculate_performance_score(likes, comments, reach, impressions, saved, shares)
+    return 0 if impressions <= 0
+
+    # Weight different engagement types
+    engagement_score = (likes * 1) + (comments * 3) + (saved * 2) + (shares * 4)
+
+    # Calculate engagement rate
+    engagement_rate = (engagement_score.to_f / impressions) * 100
+
+    # Calculate reach efficiency
+    reach_efficiency = reach > 0 ? (reach.to_f / impressions) * 100 : 0
+
+    # Combine metrics with weights
+    score = (engagement_rate * 0.7) + (reach_efficiency * 0.3)
+
+    # Cap at 100 and round
+    [score.round, 100].min
+  end
 
   # Circuit breaker to skip accounts that have been failing repeatedly
   def should_skip_account?(user_id)

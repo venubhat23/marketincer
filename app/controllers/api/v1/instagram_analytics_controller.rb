@@ -8,13 +8,11 @@ module Api
       # Get analytics for all user's Instagram pages
       def index
         begin
-          # Optimize database query with eager loading and specific fields
-          social_pages = SocialPage.includes(:social_account)
+          # Optimize database query with eager loading
+          social_pages = SocialPage.joins(:social_account)
                                    .where(social_accounts: { user_id: @current_user.id })
                                    .where(page_type: 'instagram')
                                    .where.not(access_token: [nil, ''])
-                                   .select('social_pages.id, social_pages.page_id, social_pages.name,
-                                           social_pages.username, social_pages.social_id, social_pages.access_token')
 
           if social_pages.empty?
             return render json: {
@@ -24,39 +22,32 @@ module Api
             }, status: 404
           end
 
-          # Process pages in parallel threads for better performance
+          # Process pages sequentially to avoid threading issues
           analytics_data = []
-          threads = []
 
           social_pages.each do |page|
-            threads << Thread.new do
-              begin
-                service = InstagramAnalyticsService.new(page.access_token)
-                page_analytics = service.get_comprehensive_analytics(page.social_id)
+            begin
+              service = InstagramAnalyticsService.new(page.access_token)
+              page_analytics = service.get_comprehensive_analytics(page.social_id)
 
-                Thread.current[:result] = {
-                  page_id: page.page_id,
-                  page_name: page.name,
-                  username: page.username,
-                  social_id: page.social_id,
-                  **page_analytics
-                }
-              rescue => e
-                Rails.logger.error "Error processing page #{page.page_id}: #{e.message}"
-                Thread.current[:result] = {
-                  page_id: page.page_id,
-                  page_name: page.name,
-                  username: page.username,
-                  social_id: page.social_id,
-                  error: "Failed to fetch analytics: #{e.message}"
-                }
-              end
+              analytics_data << {
+                page_id: page.page_id,
+                page_name: page.name,
+                username: page.username,
+                social_id: page.social_id,
+                **page_analytics
+              }
+            rescue => e
+              Rails.logger.error "Error processing page #{page.page_id}: #{e.message}"
+              analytics_data << {
+                page_id: page.page_id,
+                page_name: page.name,
+                username: page.username,
+                social_id: page.social_id,
+                error: "Failed to fetch analytics: #{e.message}"
+              }
             end
           end
-
-          # Wait for all threads to complete with timeout
-          threads.each { |t| t.join(30) } # 30 second timeout per thread
-          analytics_data = threads.map { |t| t[:result] }.compact
 
           render json: {
             success: true,
