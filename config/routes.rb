@@ -2,6 +2,8 @@ Rails.application.routes.draw do
   get "/health", to: "health#show"
 
   namespace :api do
+    # Instagram post endpoint (without v1 namespace for compatibility)
+    get 'instagram/posts/:media_id', to: 'v1/instagram_analytics#post_details'
     namespace :v1 do
       resources :contracts do
         collection do
@@ -33,8 +35,13 @@ Rails.application.routes.draw do
         collection do
           get :available_accounts
           post :sync_data
+          # New endpoint for getting post details by media ID only
+          get 'post/:media_id', to: 'instagram_analytics#post_details', as: :post_details
         end
       end
+
+      # Simplified Instagram post endpoint
+      get 'instagram/posts/:media_id', to: 'instagram_analytics#post_details', as: :instagram_post
 
       # LinkedIn Analytics API
       resources :linkedin_analytics, only: [:index, :show], param: :account_id do
